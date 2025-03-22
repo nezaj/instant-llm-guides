@@ -67,6 +67,9 @@ const rules = {
 export default rules;
 ```
 
+Note `update` is currently not supported for `$files` so there is no need to
+define an `update` rule for `$files`
+
 > **Note:** For development, you can set all permissions to `"true"`, but for production applications, you should implement proper access controls.
 
 ## Uploading Files
@@ -510,40 +513,7 @@ function PostDetails({ postId }: { postId: string }) {
 
 ## Permissions for File Storage
 
-Securing your file storage is crucial. Here are common permission patterns:
-
-### Development (Not for Production)
-
-```typescript
-// ✅ Good for development only
-const rules = {
-  "$files": {
-    "allow": {
-      "view": "true",
-      "create": "true",
-      "delete": "true"
-    }
-  }
-} satisfies InstantRules;
-```
-
-### Authentication-Based
-
-```typescript
-// ✅ Good: Only authenticated users
-const rules = {
-  "$files": {
-    "allow": {
-      "view": "isLoggedIn",
-      "create": "isLoggedIn",
-      "delete": "isLoggedIn"
-    },
-    "bind": ["isLoggedIn", "auth.id != null"]
-  }
-} satisfies InstantRules;
-```
-
-### Path-Based Restrictions
+`data.path.startsWith` is a useful pattern for writing permissions for `$files`
 
 ```typescript
 // ✅ Good: Users can only access their own files
@@ -625,8 +595,8 @@ import path from 'path';
 import schema from '../instant.schema';
 
 const db = init({
-  appId: process.env.INSTANT_APP_ID,
-  adminToken: process.env.INSTANT_APP_ADMIN_TOKEN,
+  appId: process.env.INSTANT_APP_ID!,
+  adminToken: process.env.INSTANT_APP_ADMIN_TOKEN!,
   schema,
 });
 
@@ -698,145 +668,25 @@ async function bulkDeleteFiles(pathPattern: string) {
 
 ### File Organization
 
+Uploading to the same path will overwrite files. Use organized file patterns to
+correctly update user, project, and application-wide assets
+
 ```typescript
 // ✅ Good: Organized file paths
 // For user-specific files
 const userFilePath = `users/${userId}/profile-picture.jpg`;
 
-// For application-wide files
-const publicFilePath = `public/logos/company-logo.png`;
-
 // For project-based files
 const projectFilePath = `projects/${projectId}/documents/${documentId}.pdf`;
+
+// For application-wide files
+const publicFilePath = `public/logos/company-logo.png`;
 ```
 
-### File Size Considerations
-
-```typescript
-// ✅ Good: Check file size before upload
-function validateAndUpload(file: File, maxSizeInMB: number = 5) {
-  const maxSizeInBytes = maxSizeInMB * 1024 * 1024;
-  
-  if (file.size > maxSizeInBytes) {
-    alert(`File is too large. Maximum size is ${maxSizeInMB}MB.`);
-    return;
-  }
-  
-  return db.storage.uploadFile(file.name, file);
-}
-```
-
-### Image Optimization
-
-Consider compressing images before upload to improve performance:
-
-```typescript
-// ✅ Good: Compress images before uploading
-async function compressAndUploadImage(file: File, quality: number = 0.7) {
-  return new Promise<void>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target?.result as string;
-      
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 1200;
-        
-        let width = img.width;
-        let height = img.height;
-        
-        // Calculate new dimensions while maintaining aspect ratio
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        
-        // Convert to blob
-        canvas.toBlob(async (blob) => {
-          if (!blob) {
-            reject(new Error('Failed to compress image'));
-            return;
-          }
-          
-          // Create new file from blob
-          const compressedFile = new File(
-            [blob], 
-            file.name, 
-            { type: 'image/jpeg' }
-          );
-          
-          try {
-            await db.storage.uploadFile(file.name, compressedFile, {
-              contentType: 'image/jpeg'
-            });
-            resolve();
-          } catch (error) {
-            reject(error);
-          }
-        }, 'image/jpeg', quality);
-      };
-    };
-    
-    reader.onerror = () => {
-      reject(new Error('Failed to read file'));
-    };
-  });
-}
-```
-
-## Troubleshooting
-
-### Common Errors and Solutions
+## Common Errors and Solutions
 
 1. **"Permission denied" when uploading**: Check your permissions rules for the `$files` namespace
 2. **File not appearing after upload**: Ensure your query is correct and you're handling the asynchronous nature of uploads
-
-### Debugging Tips
-
-```typescript
-// ✅ Good: Debug upload process
-async function debugUpload(file: File) {
-  console.log('Starting upload for:', {
-    name: file.name,
-    type: file.type,
-    size: `${(file.size / 1024).toFixed(2)} KB`
-  });
-  
-  try {
-    const start = Date.now();
-    const result = await db.storage.uploadFile(file.name, file);
-    const duration = Date.now() - start;
-    
-    console.log('Upload complete:', {
-      path: result.data.path,
-      url: result.data.url,
-      duration: `${duration}ms`
-    });
-    
-    return result;
-  } catch (error) {
-    console.error('Upload failed with error:', error);
-    throw error;
-  }
-}
-```
 
 ## Complete Example: Image Gallery
 
@@ -997,20 +847,10 @@ function ImageGallery() {
 export default ImageGallery;
 ```
 
-## Conclusion
+## Best Practices
 
-InstantDB Storage provides a simple yet powerful way to handle file operations in your applications. By following this guide, you should be able to implement:
-
-- File uploads with proper error handling
-- File retrieval and display
-- File deletion
-- Association of files with other entities
-- Appropriate permissions for securing your files
-
-Remember to always:
-- Handle errors gracefully
-- Implement proper permissions in production
-- Consider performance implications for large files
-
-With these practices in place, you can build robust file handling features that integrate seamlessly with your InstantDB data model.
-
+- Make sure permissions are set for uploads to succeed
+- Use organized path based permissions
+- Validate image sizes and use compression for performance
+- Use proper error handling to debug upload errors
+- Links to `$files` must be defined with `$files` in the **reverse** direction, similar to `$users`

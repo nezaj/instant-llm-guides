@@ -19,4 +19,3 @@ only use `@instantdb/react-native`. For the admin SDK you should only use
 you should only use `@instantdb/core`
 
 You cannot use Instant on the backend outside of the admin SDK at the moment.
-
