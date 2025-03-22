@@ -162,7 +162,7 @@ rules:
 }
 ```
 
-## Using Bind for Reusable Logic
+## Use `bind` for reusable logic
 
 The `bind` feature lets you create aliases and reusable logic for your rules.
 
@@ -189,7 +189,7 @@ Combining bind with `$default` can make writing permission rules much easier:
 }
 ```
 
-### Referencing Related Data
+## Use `data.ref` for linked data
 
 Sometimes you want to express permissions based an an attribute in a linked entity. For those instance you can use `data.ref`
 
@@ -284,7 +284,7 @@ correct ways to do this:
 "view": "data.ref('owner') != []"
 ```
 
-### Using `auth.ref` for data linked to the Authenticated User
+## Using `auth.ref` for data linked to the current user
 
 Use `auth.ref` to reference the authenticated user's linked data. This behaves
 similar to `data.ref` but you *MUST* use the `$user` prefix when referencing auth data:
@@ -325,7 +325,7 @@ similar to `data.ref` but you *MUST* use the `$user` prefix when referencing aut
 "create": "auth.ref('$user.role.type') == 'admin'"
 ```
 
-### Comparing old and new Data
+## Using `newData` to compare old and new data
 
 For update operations, you can compare the existing (`data`) and updated (`newData`) values:
 
@@ -356,6 +356,74 @@ One difference between `data.ref` and `newData.ref` is that `newData.ref` does n
 }
 ```
 
+## Use `ruleParams` for non-auth based permissions
+
+Use `ruleParams` to implement non-auth based permissions like "only people who know my document id can access it"
+
+```typescript
+// app/page.tsx
+// ✅ Good: Pass along an object containing docId to `useQuery` or `transact` via `ruleParams`
+const docId = new URLSearchParams(window.location.search).get("docId")
+
+const query = {
+  docs: {},
+};
+const { data } = db.useQuery(query, {
+  ruleParams: { docId }, // Pass the id to ruleParams!
+});
+
+// and/or in your transactions:
+
+db.transact(
+  db.tx.docs[docId].ruleParams({ docId }).update({ title: 'eat' }),
+);
+```
+
+```
+// instant.perms.ts
+// ✅ Good: And then use ruleParams in your permission rules
+{
+  "documents": {
+    "allow": {
+      "view": "data.id == ruleParams.docId",
+      "update": "data.id == ruleParams.docId",
+      "delete": "data.id == ruleParams.docId"
+    }
+  }
+}
+```
+
+### `ruleParams` with linked data
+
+You can check `ruleParams` against linked data too
+
+```
+// ✅ Good: We can view all comments for a doc if we know the doc id
+{
+  "comment": {
+    "view": "ruleParams.docId in data.ref('doc.id')"
+  }
+}
+```
+
+### `ruleParams` with a list of values
+
+You use a list as the value for a key to `ruleParams` and it will be treated
+like a CEL list in permissions
+
+```typescript
+// app/page.tsx
+// ✅ Good: Pass a list of docIds
+db.useQuery({ docs: {} }, { docIds: [id1, id2, ...] })
+
+// instant.perms.ts
+{
+  "docs": {
+    "view": "data.id in ruleParams.docIds"
+  }
+}
+```
+
 ## Common Mistakes
 
 Below are some more common mistakes to avoid when writing permission rules:
@@ -370,7 +438,6 @@ Below are some more common mistakes to avoid when writing permission rules:
 ```
 "view": "auth.id in data.ref('team.members.id')"
 ```
-
 
 ## Permission Examples
 
