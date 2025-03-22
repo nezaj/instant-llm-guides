@@ -69,7 +69,7 @@ While Instant maintains a single connection regardless of how many times you cal
 ```typescript
 // lib/db.ts
 import { init } from '@instantdb/react';
-import schema from './instant.schema';
+import schema from '../instant.schema';
 
 export const db = init({
   appId: process.env.INSTANT_APP_ID,

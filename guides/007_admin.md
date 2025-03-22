@@ -6,8 +6,6 @@ This guide explains how to use InstantDB in server-side environments for running
 
 For server-side operations, InstantDB provides a specialized package called `@instantdb/admin`. This package has similar functionality to the client SDK but is designed specifically for secure server environments.
 
-> **Important Security Note:** Never use the client SDK (`@instantdb/react`) on the server, and never expose your admin token in client-side code.
-
 ### Installation
 
 First, install the admin SDK:
