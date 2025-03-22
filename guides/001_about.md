@@ -1,8 +1,8 @@
 # What is InstantDB
 
 InstantDB is a backend as a service (Baas) that provides optimistic updates,
-multiplayer, and offline support for web and mobile applications. It is a
-drop-in replacement for `useState` and `useEffect` for persisting state.
+multiplayer, and offline support for web and mobile applications. It's like
+Firebase but it also has support for relations.
 
 Although the product is called InstantDB it is usually just referenced as
 Instant. When talking about InstantDB you should just say Instant.
@@ -19,3 +19,4 @@ only use `@instantdb/react-native`. For the admin SDK you should only use
 you should only use `@instantdb/core`
 
 You cannot use Instant on the backend outside of the admin SDK at the moment.
+

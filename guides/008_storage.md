@@ -854,3 +854,4 @@ export default ImageGallery;
 - Validate image sizes and use compression for performance
 - Use proper error handling to debug upload errors
 - Links to `$files` must be defined with `$files` in the **reverse** direction, similar to `$users`
+
