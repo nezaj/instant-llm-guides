@@ -278,7 +278,7 @@ const _schema = i.schema({
 });
 ```
 
-### Working with System Namespaces
+### Linking between System Namespaces
 
 When linking to system namespaces like `$users`:
 
@@ -300,7 +300,7 @@ profileUser: {
 },
 ```
 
-## Cascade Delete
+### Cascade Delete
 
 You can configure links to automatically delete dependent entities:
 
@@ -352,11 +352,15 @@ const _schema = i.schema({
     }),
   },
   links: {
+    // Deleting a $user will delete their associated profile
+    // Also deleting a profile will delete the underlying $user
     profileUser: {
-      forward: { on: 'profiles', has: 'one', label: '$user' },
-      reverse: { on: '$users', has: 'one', label: 'profile' },
+      forward: { on: 'profiles', has: 'one', label: '$user', onDelete: 'cascade' },
+      reverse: { on: '$users', has: 'one', label: 'profile', onDelete: 'cascade' },
     },
     postAuthor: {
+      // Deleting an author will delete all their associated posts
+      // However deleting an authoredPost will not the associated profile
       forward: { on: 'posts', has: 'one', label: 'author', onDelete: 'cascade' },
       reverse: { on: 'profiles', has: 'many', label: 'authoredPosts' },
     },
@@ -369,6 +373,7 @@ const _schema = i.schema({
       reverse: { on: 'profiles', has: 'many', label: 'authoredComments' },
     },
     postsTags: {
+      // Deleting posts or tags have no cascading effects
       forward: { on: 'posts', has: 'many', label: 'tags' },
       reverse: { on: 'tags', has: 'many', label: 'posts' },
     },
@@ -386,7 +391,7 @@ export default schema;
 
 ## Publishing Your Schema
 
-After defining your schema, you need to publish it for it to take effect:
+After defining your schema, **MUST** publish it for it to take effect:
 
 ```bash
 npx instant-cli@latest push
@@ -416,7 +421,7 @@ function PostEditor({ post }: { post: Post }) {
 
 ## Schema Modifications
 
-To rename or delete attributes after creation inform users to:
+You **CANNOT** rename or delete attributes in the CLI. Instead inform users to:
 
 1. Go to the [InstantDB Dashboard](https://instantdb.com/dash)
 2. Navigate to "Explorer"

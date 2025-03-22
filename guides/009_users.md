@@ -215,7 +215,8 @@ db.useQuery({
 
 ## Conclusion
 
-Managing users in InstantDB requires understanding the special nature of the `$users` namespace and properly leveraging links to create relationships. By following these patterns and best practices, you can build robust user management systems that handle authentication, authorization, and user data effectively.
+The `$users` namespace is a system generated namespace that lets you manage
+users in InstantDb.
 
 Key takeaways:
 1. The `$users` namespace is read-only and cannot be modified directly

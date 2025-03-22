@@ -1,10 +1,11 @@
 # InstantDB Storage Guide
 
-This guide explains how to use InstantDB Storage to easily upload, manage, and serve files in your applications. InstantDB Storage provides a simple yet powerful way to handle file operations with real-time updates.
+This guide explains how to use InstantDB Storage to easily upload, manage, and serve files in your applications.
 
 ## Core Concepts
 
 InstantDB Storage allows you to:
+
 - Upload files (images, videos, documents, etc.)
 - Retrieve file metadata and download URLs
 - Delete files

@@ -472,7 +472,7 @@ const createProjectAndTasks = async (projectData) => {
 
 ## Error Handling
 
-Wrap transactions in try/catch blocks
+You can handle transaction errors by wrapping transactions in a try/catch block
 
 ```typescript
 try {

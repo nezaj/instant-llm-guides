@@ -69,8 +69,8 @@ The structure of queries from the admin sdk is identical to the client SDK
 {
   namespace: {
     $: { /* options for this namespace */ },
-    relatedNamespace: {
-      $: { /* options for this related namespace */ },
+    linkedNamespace: {
+      $: { /* options for this linked namespace */ },
     },
   },
 }
@@ -354,17 +354,17 @@ const customSignUp = async (email, userData) => {
 
 ## Conclusion
 
-The InstantDB admin SDK provides powerful capabilities for server-side operations, allowing you to:
+The InstantDB admin SDK enables server-side operations, allowing you to:
 
 - Run background tasks and scheduled jobs
 - Implement custom authentication flows
 - Perform administrative operations
 - Manage user accounts securely
 
-Always follow security best practices by:
+Always follow best practices by:
 
 - Keeping your admin token secure
-- Validating all user input
+- Wrapping transactions in try/catch blocks to handle errors
 
-Remember that the admin SDK bypasses permissions by default - use `db.asUser()` when you want to respect user permissions.
+Remember that the admin SDK bypasses permissions by default
 

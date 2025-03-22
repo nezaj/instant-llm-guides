@@ -11,12 +11,14 @@ InstaQL uses a simple yet powerful syntax built on JavaScript objects:
 - **Associations**: Relationships between entities in different namespaces
 
 
+Queries follow the structure
+
 ```typescript
 {
   namespace: {
     $: { /* options for this namespace */ },
-    relatedNamespace: {
-      $: { /* options for this related namespace */ },
+    linkedNamespace: {
+      $: { /* options for this linked namespace */ },
     },
   },
 }
