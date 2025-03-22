@@ -1,21 +1,36 @@
 # InstaQL: InstantDB Query Language Guide
 
-InstaQL is InstantDB's declarative query language. It offers GraphQL-like functionality but using plain JavaScript objects and arrays without requiring a build step.
+InstaQL is InstantDB's declarative query language. It uses plain JavaScript objects and arrays without requiring a build step.
 
 ## Core Concepts
 
 InstaQL uses a simple yet powerful syntax built on JavaScript objects:
+
 - **Namespaces**: Collections of related entities (similar to tables)
 - **Queries**: JavaScript objects describing what data you want
 - **Associations**: Relationships between entities in different namespaces
 
+
+```typescript
+{
+  namespace: {
+    $: { /* options for this namespace */ },
+    relatedNamespace: {
+      $: { /* options for this related namespace */ },
+    },
+  },
+}
+```
+
+
 ## Basic Queries
+
 
 ### Fetching an Entire Namespace
 
 To fetch all entities from a namespace, use an empty object:
 
-```javascript
+```typescript
 // ✅ Good: Fetch all goals
 const query = { goals: {} };
 const { data } = db.useQuery(query);
@@ -30,7 +45,7 @@ const { data } = db.useQuery(query);
 ```
 
 ❌ **Common mistake**: Using arrays instead of objects
-```javascript
+```typescript
 // ❌ Bad: This will not work
 const query = { goals: [] };
 ```
@@ -39,7 +54,7 @@ const query = { goals: [] };
 
 Query multiple namespaces in one go:
 
-```javascript
+```typescript
 // ✅ Good: Fetch both goals and todos
 const query = { goals: {}, todos: {} };
 const { data } = db.useQuery(query);
@@ -52,7 +67,7 @@ const { data } = db.useQuery(query);
 ```
 
 ❌ **Common mistake**: Nesting namespaces incorrectly
-```javascript
+```typescript
 // ❌ Bad: This will not fetch both namespaces correctly
 const query = { goals: { todos: [] } };
 ```
@@ -63,7 +78,7 @@ const query = { goals: { todos: [] } };
 
 Use `where` to filter entities:
 
-```javascript
+```typescript
 // ✅ Good: Fetch a specific goal by ID
 const query = {
   goals: {
@@ -77,7 +92,7 @@ const query = {
 ```
 
 ❌ **Common mistake**: Placing filter at wrong level
-```javascript
+```typescript
 // ❌ Bad: Filter must be inside $
 const query = {
   goals: {
@@ -90,7 +105,7 @@ const query = {
 
 Filter with multiple conditions (AND logic):
 
-```javascript
+```typescript
 // ✅ Good: Fetch completed todos with high priority
 const query = {
   todos: {
@@ -110,7 +125,7 @@ const query = {
 
 Get entities and their related entities:
 
-```javascript
+```typescript
 // ✅ Good: Fetch goals with their related todos
 const query = {
   goals: {
@@ -135,7 +150,7 @@ const query = {
 ```
 
 ❌ **Common mistake**: Using arrays for associations
-```javascript
+```typescript
 // ❌ Bad: Associations must be objects, not arrays
 const query = {
   goals: {
@@ -148,7 +163,7 @@ const query = {
 
 Query in the reverse direction:
 
-```javascript
+```typescript
 // ✅ Good: Fetch todos with their related goals
 const query = {
   todos: {
@@ -161,7 +176,7 @@ const query = {
 
 Filter entities based on associated data:
 
-```javascript
+```typescript
 // ✅ Good: Find goals that have todos with a specific title
 const query = {
   goals: {
@@ -176,7 +191,7 @@ const query = {
 ```
 
 ❌ **Common mistake**: Incorrect association path
-```javascript
+```typescript
 // ❌ Bad: Incorrect association path
 const query = {
   goals: {
@@ -193,7 +208,7 @@ const query = {
 
 Filter the associated entities that are returned:
 
-```javascript
+```typescript
 // ✅ Good: Get goals with only their completed todos
 const query = {
   goals: {
@@ -208,15 +223,13 @@ const query = {
 };
 ```
 
-## Advanced Filtering
+## Logical Operators
 
-### Logical Operators
-
-#### AND Operator
+### AND Operator
 
 Combine multiple conditions that must all be true:
 
-```javascript
+```typescript
 // ✅ Good: Find goals with todos that are both high priority AND due soon
 const query = {
   goals: {
@@ -232,11 +245,11 @@ const query = {
 };
 ```
 
-#### OR Operator
+### OR Operator
 
 Match any of the given conditions:
 
-```javascript
+```typescript
 // ✅ Good: Find todos that are either high priority OR due soon
 const query = {
   todos: {
@@ -253,7 +266,7 @@ const query = {
 ```
 
 ❌ **Common mistake**: Mixing operators incorrectly
-```javascript
+```typescript
 // ❌ Bad: Incorrect nesting of operators
 const query = {
   todos: {
@@ -270,7 +283,7 @@ const query = {
 
 For indexed fields with checked types:
 
-```javascript
+```typescript
 // ✅ Good: Find todos that take more than 2 hours
 const query = {
   todos: {
@@ -286,7 +299,7 @@ const query = {
 ```
 
 ❌ **Common mistake**: Using comparison on non-indexed fields
-```javascript
+```typescript
 // ❌ Bad: Field must be indexed for comparison operators
 const query = {
   todos: {
@@ -303,7 +316,7 @@ const query = {
 
 Match any value in a list:
 
-```javascript
+```typescript
 // ✅ Good: Find todos with specific priorities
 const query = {
   todos: {
@@ -320,7 +333,7 @@ const query = {
 
 Match entities where a field doesn't equal a value:
 
-```javascript
+```typescript
 // ✅ Good: Find todos not assigned to "work" location
 const query = {
   todos: {
@@ -339,7 +352,7 @@ Note: This includes entities where the field is null or undefined.
 
 Filter by null/undefined status:
 
-```javascript
+```typescript
 // ✅ Good: Find todos with no assigned location
 const query = {
   todos: {
@@ -367,7 +380,7 @@ const query = {
 
 For indexed string fields:
 
-```javascript
+```typescript
 // ✅ Good: Find goals that start with "Get"
 const query = {
   goals: {
@@ -402,7 +415,7 @@ Pattern options:
 
 For simple pagination:
 
-```javascript
+```typescript
 // ✅ Good: Get first 10 todos
 const query = {
   todos: {
@@ -424,7 +437,7 @@ const query = {
 ```
 
 ❌ **Common mistake**: Using on nested namespaces
-```javascript
+```typescript
 // ❌ Bad: Limit only works on top-level namespaces
 const query = {
   goals: {
@@ -439,7 +452,7 @@ const query = {
 
 For more efficient pagination:
 
-```javascript
+```typescript
 // ✅ Good: Get first page
 const query = {
   todos: {
@@ -471,7 +484,7 @@ const query = {
 ```
 
 ❌ **Common mistake**: Using on nested namespaces
-```javascript
+```typescript
 // ❌ Bad: Cursor pagination only works on top-level namespaces
 const query = {
   goals: {
@@ -489,7 +502,7 @@ const query = {
 
 Change the sort order (default is by creation time):
 
-```javascript
+```typescript
 // ✅ Good: Get todos sorted by dueDate
 const query = {
   todos: {
@@ -514,7 +527,7 @@ const query = {
 ```
 
 ❌ **Common mistake**: Ordering non-indexed fields
-```javascript
+```typescript
 // ❌ Bad: Field must be indexed for ordering
 const query = {
   todos: {
@@ -531,7 +544,7 @@ const query = {
 
 Select specific fields to optimize performance:
 
-```javascript
+```typescript
 // ✅ Good: Only fetch title and status fields
 const query = {
   todos: {
@@ -552,7 +565,7 @@ const query = {
 
 This works with nested associations too:
 
-```javascript
+```typescript
 // ✅ Good: Select different fields at different levels
 const query = {
   goals: {
@@ -574,7 +587,7 @@ You can also defer queries until a condition is met. This is useful when you
 need to wait for some data to be available before you can run your query. Here's
 an example of deferring a fetch for todos until a user is logged in.
 
-```javascript
+```typescript
 const { isLoading, user, error } = db.useAuth();
 
 const {
@@ -598,42 +611,11 @@ const {
 );
 ```
 
-## Query once
-
-Sometimes, you don't want a subscription, and just want to fetch data once. For example, you might want to fetch data before rendering a page or check whether a user name is available.
-
-In these cases, you can use `queryOnce` instead of `useQuery`. `queryOnce` returns a promise that resolves with the data once the query is complete.
-
-Unlike `useQuery`, `queryOnce` will throw an error if the user is offline. This is because `queryOnce` is intended for use cases where you need the most up-to-date data.
-
-```javascript
-const query = { todos: {} };
-const { data } = await db.queryOnce(query);
-// returns the same data as useQuery, but without the isLoading and error fields
-```
-
-You can also do pagination with `queryOnce`:
-
-```javascript
-const query = {
-  todos: {
-    $: {
-      limit: 10,
-      offset: 10,
-    },
-  },
-};
-
-const { data, pageInfo } = await db.queryOnce(query);
-// pageInfo behaves the same as with useQuery
-```
-
-
 ## Combining Features
 
 You can combine these features to create powerful queries:
 
-```javascript
+```typescript
 // ✅ Good: Complex query combining multiple features
 const query = {
   goals: {
@@ -663,11 +645,12 @@ const query = {
 
 ## Best Practices
 
-1. **Index fields** that you'll filter, sort, or use in comparisons
+1. **Index fields in the schema** that you'll filter, sort, or use in comparisons
 2. **Use field selection** to minimize data transfer and re-renders
 3. **Defer queries** when dependent data isn't ready
 4. **Avoid deep nesting** of associations when possible
-5. **Be careful with queries** that might return large result sets
+5. **Be careful with queries** that might return large result sets, use where
+   clauses, limits, and pagination to avoid timeouts
 
 ## Troubleshooting
 
@@ -677,14 +660,3 @@ Common errors:
 2. **"Invalid operator"**: Check operator syntax and spelling
 3. **"Invalid query structure"**: Verify your query structure, especially $ placement
 
-Remember that the query structure is:
-```javascript
-{
-  namespace: {
-    $: { /* options for this namespace */ },
-    relatedNamespace: {
-      $: { /* options for this related namespace */ },
-    },
-  },
-}
-```

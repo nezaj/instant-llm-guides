@@ -221,3 +221,4 @@ Key takeaways:
 1. The `$users` namespace is read-only and cannot be modified directly
 2. Always use linked entities to store additional user information
 3. When creating links, always put `$users` in the reverse direction
+

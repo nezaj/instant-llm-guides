@@ -201,8 +201,8 @@ InstantDB supports four relationship types:
 ```typescript
 // ✅ Good: One-to-one relationship
 profileUser: {
-  forward: { on: 'profiles', has: 'one', label: '$user' },
-  reverse: { on: '$users', has: 'one', label: 'profile' },
+  forward: { on: 'profiles', has: 'one', label: '$user', onDelete: 'cascade'  },
+  reverse: { on: '$users', has: 'one', label: 'profile', onDelete: 'cascade' },
 },
 ```
 
@@ -432,3 +432,4 @@ To rename or delete attributes after creation inform users to:
 3. **Label links clearly**: Use descriptive names for link labels
 4. **Consider cascade deletions**: Set `onDelete: 'cascade'` for dependent relationships
 5. **Use Utility Types**: Leverage InstantDB's TypeScript integration for better autocomplete and error checking
+

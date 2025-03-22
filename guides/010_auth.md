@@ -385,3 +385,4 @@ To use Clerk with Instant use the docs at https://www.instantdb.com/docs/auth/cl
 ## Authentication Best Practices
 
 For most applications, magic code authentication should the default choice.
+

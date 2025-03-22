@@ -94,3 +94,4 @@ npx instant-cli@latest push schema
 # Push permission changes
 npx instant-cli@latest push perms
 ```
+
