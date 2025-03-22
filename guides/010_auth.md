@@ -44,6 +44,11 @@ Now let's explore each authentication method in detail.
 ## Magic Code Authentication
 
 Magic code authentication provides a passwordless login experience via email verification codes.
+This method is user-friendly and secure, as it eliminates the need for passwords. This is the recommended approach for most applications.
+
+❌ **Common mistake**: Using password-based authentication in client-side code
+
+InstantDB does not provide built-in username/password authentication. If you need traditional password-based authentication, you must implement it as a custom auth flow using the Admin SDK.
 
 ### How It Works
 
@@ -52,131 +57,186 @@ Magic code authentication provides a passwordless login experience via email ver
 3. User enters the code
 4. InstantDB verifies the code and authenticates the user
 
-### Implementation Steps
+### Full Example
 
-#### Step 1: Set Up Basic Structure
+Here's a complete example of how to implement magic code authentication using
+Next.js, React, and the InstantDB React SDK in a client-side application.
 
-Create a component that handles the authentication flow:
+```typescript
+// instant.schema.ts
+import { i } from '@instantdb/react';
 
-```jsx
+const _schema = i.schema({
+  entities: {
+    $users: i.entity({
+      email: i.string().unique().indexed(),
+    }),
+  },
+});
+
+type _AppSchema = typeof _schema;
+interface AppSchema extends _AppSchema {}
+const schema: AppSchema = _schema;
+
+export type { AppSchema };
+export default schema;
+
+// lib/db.ts
+import { init } from '@instantdb/react';
+import schema from './instant.schema';
+
+export const db = init({
+  appId: process.env.NEXT_PUBLIC_INSTANT_APP_ID!,
+  schema
+});
+
+
+// app/page.tsx
+"use client";
+
+import React, { useState } from "react";
+import { User } from "@instantdb/react";
+import { db } from "../lib/db";
+
 function App() {
+  // ✅ Good: Use the `useAuth` hook to get the current auth state
   const { isLoading, user, error } = db.useAuth();
 
-  if (isLoading) return <div>Loading...</div>;
-  if (error) return <div>Authentication error: {error.message}</div>;
-  if (user) return <AuthenticatedContent user={user} />;
+  // ✅ Good: Handle loading state
+  if (isLoading) {
+    return;
+  }
+
+  // ✅ Good: Handle error state
+  if (error) {
+    return <div className="p-4 text-red-500">Uh oh! {error.message}</div>;
+  }
+
+  // ✅ Good: Show authenticated content if user exists
+  if (user) {
+    // The user is logged in! Let's load the `Main`
+    return <Main user={user} />;
+  }
+  // The user isn't logged in yet. Let's show them the `Login` component
   return <Login />;
 }
-```
 
-#### Step 2: Implement Email Collection
+function Main({ user }: { user: User }) {
+  return (
+    <div className="p-4 space-y-4">
+      <h1 className="text-2xl font-bold">Hello {user.email}!</h1>
+      {/* ✅ Good: Use the `db.auth.signOut()` to sign out a user */}
+      <button
+        onClick={() => db.auth.signOut()}
+        className="px-3 py-1 bg-blue-600 text-white font-bold hover:bg-blue-700"
+      >
+        Sign out
+      </button>
+    </div>
+  );
+}
 
-```jsx
 function Login() {
   const [sentEmail, setSentEmail] = useState("");
 
   return (
-    <div>
-      {!sentEmail ? (
-        <EmailForm onSendEmail={setSentEmail} />
-      ) : (
-        <CodeForm email={sentEmail} />
-      )}
+    <div className="flex justify-center items-center min-h-screen">
+      <div className="max-w-sm">
+        {!sentEmail ? (
+          <EmailStep onSendEmail={setSentEmail} />
+        ) : (
+          <CodeStep sentEmail={sentEmail} />
+        )}
+      </div>
     </div>
   );
 }
 
-function EmailForm({ onSendEmail }) {
-  const [email, setEmail] = useState("");
-  const [isSending, setIsSending] = useState(false);
-
-  const handleSubmit = async (e) => {
+function EmailStep({ onSendEmail }: { onSendEmail: (email: string) => void }) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsSending(true);
-    
-    try {
-      await db.auth.sendMagicCode({ email });
-      onSendEmail(email);
-    } catch (error) {
-      alert("Error sending code: " + error.message);
-    } finally {
-      setIsSending(false);
-    }
+    const inputEl = inputRef.current!;
+    const email = inputEl.value;
+    onSendEmail(email);
+    // ✅ Good: Use the `sendMagicCode` method to send the magic code
+    db.auth.sendMagicCode({ email }).catch((err) => {
+      alert("Uh oh :" + err.body?.message);
+      onSendEmail("");
+    });
   };
-
   return (
-    <form onSubmit={handleSubmit}>
-      <h2>Sign In</h2>
+    <form
+      key="email"
+      onSubmit={handleSubmit}
+      className="flex flex-col space-y-4"
+    >
+      <h2 className="text-xl font-bold">Let's log you in</h2>
+      <p className="text-gray-700">
+        Enter your email, and we'll send you a verification code. We'll create
+        an account for you too if you don't already have one.
+      </p>
       <input
+        ref={inputRef}
         type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        className="border border-gray-300 px-3 py-1  w-full"
         placeholder="Enter your email"
         required
+        autoFocus
       />
-      <button type="submit" disabled={isSending}>
-        {isSending ? "Sending..." : "Send Verification Code"}
+      <button
+        type="submit"
+        className="px-3 py-1 bg-blue-600 text-white font-bold hover:bg-blue-700 w-full"
+      >
+        Send Code
       </button>
     </form>
   );
 }
-```
 
-#### Step 3: Implement Code Verification
-
-```jsx
-function CodeForm({ email }) {
-  const [code, setCode] = useState("");
-  const [isVerifying, setIsVerifying] = useState(false);
-
-  const handleSubmit = async (e) => {
+function CodeStep({ sentEmail }: { sentEmail: string }) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsVerifying(true);
-    
-    try {
-      await db.auth.signInWithMagicCode({ email, code });
-    } catch (error) {
-      alert("Invalid code: " + error.message);
-      setCode("");
-    } finally {
-      setIsVerifying(false);
-    }
+    const inputEl = inputRef.current!;
+    const code = inputEl.value;
+    // ✅ Good: Use the `signInWithMagicCode` method to sign in with the code
+    db.auth.signInWithMagicCode({ email: sentEmail, code }).catch((err) => {
+      inputEl.value = "";
+      alert("Uh oh :" + err.body?.message);
+    });
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <h2>Enter Verification Code</h2>
-      <p>We sent a code to {email}</p>
+    <form
+      key="code"
+      onSubmit={handleSubmit}
+      className="flex flex-col space-y-4"
+    >
+      <h2 className="text-xl font-bold">Enter your code</h2>
+      <p className="text-gray-700">
+        We sent an email to <strong>{sentEmail}</strong>. Check your email, and
+        paste the code you see.
+      </p>
       <input
+        ref={inputRef}
         type="text"
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
-        placeholder="Enter your code"
+        className="border border-gray-300 px-3 py-1  w-full"
+        placeholder="123456..."
         required
+        autoFocus
       />
-      <button type="submit" disabled={isVerifying}>
-        {isVerifying ? "Verifying..." : "Verify Code"}
+      <button
+        type="submit"
+        className="px-3 py-1 bg-blue-600 text-white font-bold hover:bg-blue-700 w-full"
+      >
+        Verify Code
       </button>
     </form>
   );
 }
-```
 
-#### Step 4: Implement Sign Out
-
-```jsx
-function AuthenticatedContent({ user }) {
-  const handleSignOut = async () => {
-    await db.auth.signOut();
-  };
-
-  return (
-    <div>
-      <h1>Welcome, {user.email}!</h1>
-      <button onClick={handleSignOut}>Sign Out</button>
-    </div>
-  );
-}
+export default App;
 ```
 
 ### Best Practices for Magic Code Auth
@@ -185,360 +245,39 @@ function AuthenticatedContent({ user }) {
 2. **Loading States** - Show loading indicators during async operations
 3. **Resend Functionality** - Allow users to request a new code if needed
 
-## Google OAuth Authentication
-
-Google OAuth allows users to sign in with their Google accounts.
-
-### Configuration Steps
-
-#### Step 1: Set Up Google OAuth Credentials
-
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-2. Create a new OAuth client ID
-3. Set the application type to "Web application"
-4. Add `https://api.instantdb.com/runtime/oauth/callback` as an authorized redirect URI
-5. Add your application domains to the authorized JavaScript origins
-6. Save the client ID and client secret
-
-#### Step 2: Register with InstantDB
-
-1. Go to the InstantDB dashboard's Auth tab
-2. Add your Google client credentials
-3. Add your application's domain to the Redirect Origins
-
-### Implementation Options
-
-#### Option 1: Using Google's Sign-In Button
-
-```jsx
-import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
-
-function Login() {
-  const [nonce] = useState(crypto.randomUUID());
-
-  const handleSuccess = async (credentialResponse) => {
-    try {
-      await db.auth.signInWithIdToken({
-        clientName: "YOUR_GOOGLE_CLIENT_NAME", // From InstantDB dashboard
-        idToken: credentialResponse.credential,
-        nonce: nonce,
-      });
-    } catch (error) {
-      console.error("Authentication failed:", error);
-    }
-  };
-
-  return (
-    <GoogleOAuthProvider clientId="YOUR_GOOGLE_CLIENT_ID">
-      <GoogleLogin
-        nonce={nonce}
-        onSuccess={handleSuccess}
-        onError={() => console.error("Login failed")}
-      />
-    </GoogleOAuthProvider>
-  );
-}
-```
-
-#### Option 2: Using Redirect Flow
-
-```jsx
-function Login() {
-  // Create authorization URL for Google OAuth
-  const authUrl = db.auth.createAuthorizationURL({
-    clientName: "YOUR_GOOGLE_CLIENT_NAME", // From InstantDB dashboard
-    redirectURL: window.location.href,
-  });
-
-  return (
-    <div>
-      <h2>Sign In</h2>
-      <a href={authUrl} className="google-signin-button">
-        Sign in with Google
-      </a>
-    </div>
-  );
-}
-```
-
-### React Native Implementation
-
-For React Native applications, you'll use a different approach with Expo's AuthSession:
-
-```jsx
-import { makeRedirectUri, useAuthRequest, useAutoDiscovery } from 'expo-auth-session';
-
-function Login() {
-  const discovery = useAutoDiscovery(db.auth.issuerURI());
-  const [request, response, promptAsync] = useAuthRequest(
-    {
-      clientId: "YOUR_INSTANT_AUTH_CLIENT_NAME",
-      redirectUri: makeRedirectUri(),
-    },
-    discovery
-  );
-
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { code } = response.params;
-      
-      db.auth.exchangeOAuthCode({
-        code,
-        codeVerifier: request.codeVerifier,
-      }).catch(error => {
-        console.error("Auth error:", error);
-      });
-    }
-  }, [response]);
-
-  return (
-    <Button
-      title="Sign in with Google"
-      disabled={!request}
-      onPress={() => promptAsync()}
-    />
-  );
-}
-```
-
-## Apple Sign In
-
-Apple Sign In allows users to authenticate with their Apple ID.
-
-### Configuration Steps
-
-#### Step 1: Set Up Apple Developer Account
-
-1. Create an App ID in your Apple Developer account
-2. Enable the Sign In with Apple capability
-3. Create a Services ID and configure Sign In with Apple
-4. For redirect flow, add `api.instantdb.com` to the domains
-5. For redirect flow, add `https://api.instantdb.com/runtime/oauth/callback` to return URLs
-6. For redirect flow, generate a private key
-
-#### Step 2: Register with InstantDB
-
-1. Go to the InstantDB dashboard's Auth tab
-2. Add your Apple client with the necessary credentials:
-   - Services ID
-   - Team ID
-   - Key ID
-   - Private Key
-
-### Web Implementation
-
-#### Popup Flow
-
-```jsx
-function Login() {
-  const handleSignIn = async () => {
-    const nonce = crypto.randomUUID();
-    
-    try {
-      // Initialize Apple Sign In
-      AppleID.auth.init({
-        clientId: 'YOUR_SERVICES_ID', // From Apple Developer Account
-        scope: 'name email',
-        redirectURI: window.location.href,
-      });
-      
-      // Sign in with Apple
-      const response = await AppleID.auth.signIn({
-        nonce: nonce,
-        usePopup: true,
-      });
-      
-      // Sign in with InstantDB
-      await db.auth.signInWithIdToken({
-        clientName: 'YOUR_APPLE_CLIENT_NAME', // From InstantDB dashboard
-        idToken: response.authorization.id_token,
-        nonce: nonce,
-      });
-    } catch (error) {
-      console.error("Authentication failed:", error);
-    }
-  };
-
-  return (
-    <button onClick={handleSignIn}>
-      Sign in with Apple
-    </button>
-  );
-}
-```
-
-#### Redirect Flow
-
-```jsx
-function Login() {
-  const authUrl = db.auth.createAuthorizationURL({
-    clientName: 'YOUR_APPLE_CLIENT_NAME', // From InstantDB dashboard
-    redirectURL: window.location.href,
-  });
-
-  return (
-    <a href={authUrl}>
-      Sign in with Apple
-    </a>
-  );
-}
-```
-
-### React Native Implementation
-
-```jsx
-import * as AppleAuthentication from 'expo-apple-authentication';
-
-function Login() {
-  const handleSignIn = async () => {
-    const nonce = crypto.randomUUID();
-    
-    try {
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-        nonce: nonce,
-      });
-      
-      await db.auth.signInWithIdToken({
-        clientName: 'YOUR_APPLE_CLIENT_NAME', // From InstantDB dashboard
-        idToken: credential.identityToken,
-        nonce: nonce,
-      });
-    } catch (error) {
-      if (error.code === 'ERR_REQUEST_CANCELED') {
-        // User canceled the sign-in flow
-      } else {
-        console.error("Authentication failed:", error);
-      }
-    }
-  };
-
-  return (
-    <AppleAuthentication.AppleAuthenticationButton
-      buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-      buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-      cornerRadius={5}
-      style={{ width: 200, height: 44 }}
-      onPress={handleSignIn}
-    />
-  );
-}
-```
-
-## Clerk Integration
-
-If you're already using Clerk for authentication, you can integrate it with InstantDB.
-
-### Configuration Steps
-
-#### Step 1: Configure Clerk
-
-1. In your Clerk dashboard, go to the Sessions tab
-2. Edit the "Customize session token" section
-3. Add the email claim: `{"email": "{{user.primary_email_address}}"}`
-4. Save your changes
-
-#### Step 2: Register with InstantDB
-
-1. Copy your Clerk Publishable Key from the Clerk dashboard
-2. Go to the InstantDB dashboard's Auth tab
-3. Add a new Clerk client with your publishable key
-
-### Implementation
-
-```jsx
-import { useAuth, ClerkProvider, SignInButton, SignedIn, SignedOut } from '@clerk/nextjs';
-import { useEffect } from 'react';
-
-function ClerkIntegration() {
-  const { getToken, signOut: clerkSignOut } = useAuth();
-  const { isLoading, user, error } = db.useAuth();
-
-  // Sign in to InstantDB using Clerk token
-  const signInWithClerk = async () => {
-    const idToken = await getToken();
-    
-    if (!idToken) return;
-    
-    try {
-      await db.auth.signInWithIdToken({
-        clientName: 'YOUR_CLERK_CLIENT_NAME', // From InstantDB dashboard
-        idToken: idToken,
-      });
-    } catch (error) {
-      console.error("InstantDB authentication failed:", error);
-    }
-  };
-
-  // Sign in automatically when component mounts
-  useEffect(() => {
-    signInWithClerk();
-  }, []);
-
-  // Combined sign out function
-  const handleSignOut = async () => {
-    // First sign out of InstantDB
-    await db.auth.signOut();
-    // Then sign out of Clerk
-    clerkSignOut();
-  };
-
-  if (isLoading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error.message}</div>;
-  if (user) {
-    return (
-      <div>
-        <h1>Welcome, {user.email}!</h1>
-        <button onClick={handleSignOut}>Sign Out</button>
-      </div>
-    );
-  }
-  
-  return (
-    <button onClick={signInWithClerk}>
-      Sign in to InstantDB with Clerk
-    </button>
-  );
-}
-
-function App() {
-  return (
-    <ClerkProvider publishableKey="YOUR_CLERK_PUBLISHABLE_KEY">
-      <SignedOut>
-        <SignInButton />
-      </SignedOut>
-      <SignedIn>
-        <ClerkIntegration />
-      </SignedIn>
-    </ClerkProvider>
-  );
-}
-```
-
 ## Custom Authentication
 
 For advanced use cases, you can build custom authentication flows using the InstantDB Admin SDK.
 
 ### Server-Side Implementation
 
-```javascript
-// Server-side code (e.g., in a Next.js API route)
+We can use a Next.js API route to handle custom authentication logic. This example demonstrates a simple email/password validation, but you can adapt it to your needs.
+
+```typescript
+// pages/api/auth/login.ts
 import { init } from '@instantdb/admin';
+import { NextApiRequest, NextApiResponse } from 'next';
+
+// Define the type for the request body
+interface LoginRequest {
+  email: string;
+  password: string;
+}
 
 const db = init({
-  appId: process.env.INSTANT_APP_ID,
-  adminToken: process.env.INSTANT_ADMIN_TOKEN,
+  appId: process.env.NEXT_PUBLIC_INSTANT_APP_ID!,
+  adminToken: process.env.INSTANT_ADMIN_TOKEN!,
 });
 
-export default async function handler(req, res) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
   
-  const { email, password } = req.body;
+  const { email, password } = req.body as LoginRequest;
   
   // Custom authentication logic
   const isValid = await validateCredentials(email, password);
@@ -548,10 +287,9 @@ export default async function handler(req, res) {
   }
   
   try {
-    // Generate InstantDB token
+    // ✅ Good: Now that we have validated the user, we can create a token
+    // and return it to the client
     const token = await db.auth.createToken(email);
-    
-    // Return token to client
     res.status(200).json({ token });
   } catch (error) {
     res.status(500).json({ error: 'Authentication failed' });
@@ -559,7 +297,7 @@ export default async function handler(req, res) {
 }
 
 // Custom validation function
-async function validateCredentials(email, password) {
+async function validateCredentials(email: string, password: string): Promise<boolean> {
   // Implement your custom validation logic
   // e.g., check against your database
   return true; // Return true if valid
@@ -568,7 +306,13 @@ async function validateCredentials(email, password) {
 
 ### Client-Side Implementation
 
-```jsx
+```typescript
+// app/page.tsx
+"use client";
+
+import React, { useState } from "react";
+import { db } from "../lib/db";
+
 function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -592,7 +336,8 @@ function Login() {
       
       const { token } = await response.json();
       
-      // Use the token to sign in with InstantDB
+      // ✅ Good: User was authenticated successfully, now sign in with the
+      token
       await db.auth.signInWithToken(token);
     } catch (error) {
       console.error("Login failed:", error);
@@ -625,203 +370,18 @@ function Login() {
 }
 ```
 
+## Google OAuth Authentication
+
+To use Google OAuth with Instant use the docs at https://www.instantdb.com/docs/auth/google-oauth
+
+## Apple Sign In
+
+To use Apple Sign In with Instant use the docs at https://www.instantdb.com/docs/auth/apple
+
+## Clerk Integration
+
+To use Clerk with Instant use the docs at https://www.instantdb.com/docs/auth/clerk
+
 ## Authentication Best Practices
 
-Default to Magic Code Authentication - For most applications, magic code (email verification) authentication should the default choice because:
-
-* It's simple to implement
-* It eliminates password management concerns
-* It provides good security with minimal user friction
-* It works reliably across platforms
-
-Use OAuth or custom authentication when explicitly prompted or when it is required
-
-❌ **Common mistake**: Using password-based authentication in client-side code
-
-InstantDB does not provide built-in username/password authentication. If you need traditional password-based authentication, you must implement it as a custom auth flow using the Admin SDK.
-
-## Complete Example: Multi-Provider Auth
-
-Here's a comprehensive example that combines multiple authentication methods:
-
-```jsx
-import { useState } from 'react';
-import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
-import { init } from '@instantdb/react';
-
-const db = init({ appId: process.env.NEXT_PUBLIC_INSTANT_APP_ID });
-
-function App() {
-  const { isLoading, user, error } = db.useAuth();
-
-  if (isLoading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error.message}</div>;
-  if (user) return <AuthenticatedContent user={user} />;
-  return <Login />;
-}
-
-function AuthenticatedContent({ user }) {
-  const handleSignOut = async () => {
-    await db.auth.signOut();
-  };
-
-  return (
-    <div>
-      <h1>Welcome, {user.email}!</h1>
-      <button onClick={handleSignOut}>Sign Out</button>
-    </div>
-  );
-}
-
-function Login() {
-  const [authMethod, setAuthMethod] = useState(null);
-  const [sentEmail, setSentEmail] = useState("");
-  const [nonce] = useState(crypto.randomUUID());
-
-  // Google OAuth
-  const googleAuthUrl = db.auth.createAuthorizationURL({
-    clientName: "YOUR_GOOGLE_CLIENT_NAME",
-    redirectURL: window.location.href,
-  });
-
-  // Apple Sign In
-  const appleAuthUrl = db.auth.createAuthorizationURL({
-    clientName: "YOUR_APPLE_CLIENT_NAME",
-    redirectURL: window.location.href,
-  });
-
-  // Handle Google sign in with button
-  const handleGoogleSuccess = async (credentialResponse) => {
-    try {
-      await db.auth.signInWithIdToken({
-        clientName: "YOUR_GOOGLE_CLIENT_NAME",
-        idToken: credentialResponse.credential,
-        nonce: nonce,
-      });
-    } catch (error) {
-      console.error("Google authentication failed:", error);
-    }
-  };
-
-  // Render different auth forms based on selected method
-  if (authMethod === "magic-code") {
-    if (sentEmail) {
-      return <MagicCodeForm email={sentEmail} />;
-    }
-    return <EmailForm onSendEmail={setSentEmail} onBack={() => setAuthMethod(null)} />;
-  }
-
-  // Auth method selection screen
-  return (
-    <div>
-      <h2>Sign In</h2>
-      
-      <div className="auth-options">
-        <button onClick={() => setAuthMethod("magic-code")}>
-          Continue with Email
-        </button>
-        
-        <a href={googleAuthUrl} className="google-button">
-          Continue with Google
-        </a>
-        
-        <GoogleOAuthProvider clientId="YOUR_GOOGLE_CLIENT_ID">
-          <GoogleLogin
-            nonce={nonce}
-            onSuccess={handleGoogleSuccess}
-            onError={() => console.error("Login failed")}
-          />
-        </GoogleOAuthProvider>
-        
-        <a href={appleAuthUrl} className="apple-button">
-          Continue with Apple
-        </a>
-      </div>
-    </div>
-  );
-}
-
-function EmailForm({ onSendEmail, onBack }) {
-  const [email, setEmail] = useState("");
-  const [isSending, setIsSending] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSending(true);
-    
-    try {
-      await db.auth.sendMagicCode({ email });
-      onSendEmail(email);
-    } catch (error) {
-      alert("Error sending code: " + error.message);
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <h2>Sign In with Email</h2>
-      <input
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Enter your email"
-        required
-      />
-      <button type="submit" disabled={isSending}>
-        {isSending ? "Sending..." : "Send Verification Code"}
-      </button>
-      <button type="button" onClick={onBack}>
-        Back
-      </button>
-    </form>
-  );
-}
-
-function MagicCodeForm({ email }) {
-  const [code, setCode] = useState("");
-  const [isVerifying, setIsVerifying] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsVerifying(true);
-    
-    try {
-      await db.auth.signInWithMagicCode({ email, code });
-    } catch (error) {
-      alert("Invalid code: " + error.message);
-      setCode("");
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <h2>Enter Verification Code</h2>
-      <p>We sent a code to {email}</p>
-      <input
-        type="text"
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
-        placeholder="Enter your code"
-        required
-      />
-      <button type="submit" disabled={isVerifying}>
-        {isVerifying ? "Verifying..." : "Verify Code"}
-      </button>
-    </form>
-  );
-}
-
-export default App;
-```
-
-## Conclusion
-
-InstantDB provides flexible authentication options to suit different application needs. Whether you prefer passwordless magic codes, social sign-in with Google or Apple, or want to integrate with existing auth providers like Clerk, InstantDB has you covered.
-
-For most applications, the magic code authentication offers a good balance of security and user experience. For applications that require stronger security or integration with existing systems, consider using OAuth providers or building custom authentication flows.
-
-By following the patterns and best practices in this guide, you can implement secure, user-friendly authentication in your InstantDB applications.
+For most applications, magic code authentication should the default choice.
