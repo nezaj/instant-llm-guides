@@ -11,26 +11,44 @@ InstaQL uses a simple yet powerful syntax built on JavaScript objects:
 - **Associations**: Relationships between entities in different namespaces
 
 
-Queries follow the structure
+Queris have the following structure
 
 ```typescript
 {
-  namespace: {
-    $: { /* options for this namespace */ },
+  namespace1: {
+    $: { /* operators for this namespace */ },
     linkedNamespace: {
-      $: { /* options for this linked namespace */ },
+      $: { /* operators for this linked namespace */ },
     },
   },
+  namespace2: { /* ... */ },
+  namespace3: { /* ... */ },
+  // ..etc
 }
 ```
 
 
 ## Basic Queries
 
+Queries have `isLoading` and `error` states. We **MUST** handle these before
+rendering results
+
+```typscript
+const { isLoading, data, error } = db.useQuery({ todos: {} })
+if (isLoading) { return }
+if (error) { return (<div>Error: {error.message}</div>); }
+
+return ( <pre>{JSON.stringify(data, null, 2)}</pre> );
+```
+
+In the following sections we show how to use filters, joins, paginations.
+To keep these examples focused we won't show the `isLoading` and `error` states
+but these must be handled in actual code
 
 ### Fetching an Entire Namespace
 
-To fetch all entities from a namespace, use an empty object:
+To fetch all entities from a namespace, use an empty object without any
+operators.
 
 ```typescript
 // ✅ Good: Fetch all goals
@@ -46,15 +64,9 @@ const { data } = db.useQuery(query);
 // }
 ```
 
-❌ **Common mistake**: Using arrays instead of objects
-```typescript
-// ❌ Bad: This will not work
-const query = { goals: [] };
-```
-
 ### Fetching Multiple Namespaces
 
-Query multiple namespaces in one go:
+Query multiple namespaces in one go by specifying mulitple namespaces:
 
 ```typescript
 // ✅ Good: Fetch both goals and todos
@@ -70,15 +82,16 @@ const { data } = db.useQuery(query);
 
 ❌ **Common mistake**: Nesting namespaces incorrectly
 ```typescript
-// ❌ Bad: This will not fetch both namespaces correctly
-const query = { goals: { todos: [] } };
+// ❌ Bad: This will fetch todos associated with goals instead of all goals and
+todos
+const query = { goals: { todos: {} };
 ```
 
 ## Filtering
 
 ### Fetching by ID
 
-Use `where` to filter entities:
+Use `where` operator to filter entities:
 
 ```typescript
 // ✅ Good: Fetch a specific goal by ID
@@ -105,7 +118,7 @@ const query = {
 
 ### Multiple Conditions
 
-Filter with multiple conditions (AND logic):
+Use multiple keys in `where` to filter with multiple conditions (AND logic):
 
 ```typescript
 // ✅ Good: Fetch completed todos with high priority
@@ -121,11 +134,11 @@ const query = {
 };
 ```
 
-## Associations
+## Associations (JOIN logic)
 
 ### Fetching Related Entities
 
-Get entities and their related entities:
+Nest namespaces to fetch linked entities.
 
 ```typescript
 // ✅ Good: Fetch goals with their related todos
@@ -151,19 +164,9 @@ const query = {
 // }
 ```
 
-❌ **Common mistake**: Using arrays for associations
-```typescript
-// ❌ Bad: Associations must be objects, not arrays
-const query = {
-  goals: {
-    todos: [],
-  },
-};
-```
-
 ### Inverse Associations
 
-Query in the reverse direction:
+Links are bidirectional and you can query in the reverse direction
 
 ```typescript
 // ✅ Good: Fetch todos with their related goals
@@ -176,7 +179,7 @@ const query = {
 
 ### Filtering By Associations
 
-Filter entities based on associated data:
+`where` operators support filtering entities based on associated values
 
 ```typescript
 // ✅ Good: Find goals that have todos with a specific title
@@ -192,9 +195,9 @@ const query = {
 };
 ```
 
-❌ **Common mistake**: Incorrect association path
+❌ **Common mistake**: Incorrect syntax for filtering on associated values
 ```typescript
-// ❌ Bad: Incorrect association path
+// ❌ Bad: This will return an error!
 const query = {
   goals: {
     $: {
@@ -208,7 +211,7 @@ const query = {
 
 ### Filtering Associations
 
-Filter the associated entities that are returned:
+You can use `where` in a nested namespace to filter out associated entities.
 
 ```typescript
 // ✅ Good: Get goals with only their completed todos
@@ -229,7 +232,7 @@ const query = {
 
 ### AND Operator
 
-Combine multiple conditions that must all be true:
+Use `and` inside of `where` to filter associations based on multiple criteria
 
 ```typescript
 // ✅ Good: Find goals with todos that are both high priority AND due soon
@@ -249,7 +252,7 @@ const query = {
 
 ### OR Operator
 
-Match any of the given conditions:
+Use `or` inside of `where` to filter associated based on any criteria.
 
 ```typescript
 // ✅ Good: Find todos that are either high priority OR due soon
@@ -267,9 +270,9 @@ const query = {
 };
 ```
 
-❌ **Common mistake**: Mixing operators incorrectly
+❌ **Common mistake**: Incorrect synax for `or` and `and`
 ```typescript
-// ❌ Bad: Incorrect nesting of operators
+// ❌ Bad: This will return an error!
 const query = {
   todos: {
     $: {
@@ -283,7 +286,7 @@ const query = {
 
 ### Comparison Operators
 
-For indexed fields with checked types:
+Using `$gt`, `$lt`, `$gte`, or `$lte` is supported on indexed attributes with checked types:
 
 ```typescript
 // ✅ Good: Find todos that take more than 2 hours
@@ -300,14 +303,14 @@ const query = {
 // Available operators: $gt, $lt, $gte, $lte
 ```
 
-❌ **Common mistake**: Using comparison on non-indexed fields
+❌ **Common mistake**: Using comparison on non-indexed attributes
 ```typescript
-// ❌ Bad: Field must be indexed for comparison operators
+// ❌ Bad: Attribute must be indexed for comparison operators
 const query = {
   todos: {
     $: {
       where: {
-        nonIndexedField: { $gt: 5 }, // Will fail if field isn't indexed
+        nonIndexedAttr: { $gt: 5 }, // Will fail if attr isn't indexed
       },
     },
   },
@@ -316,7 +319,7 @@ const query = {
 
 ### IN Operator
 
-Match any value in a list:
+Use `in` to match any value in a list:
 
 ```typescript
 // ✅ Good: Find todos with specific priorities
@@ -333,7 +336,7 @@ const query = {
 
 ### NOT Operator
 
-Match entities where a field doesn't equal a value:
+Use `not` to match entities where an attribute doesn't equal a value:
 
 ```typescript
 // ✅ Good: Find todos not assigned to "work" location
@@ -348,11 +351,11 @@ const query = {
 };
 ```
 
-Note: This includes entities where the field is null or undefined.
+Note: This includes entities where the attribute is null or undefined.
 
 ### NULL Check
 
-Filter by null/undefined status:
+Use `$isNull` to match by null or undefined:
 
 ```typescript
 // ✅ Good: Find todos with no assigned location
@@ -380,7 +383,7 @@ const query = {
 
 ### String Pattern Matching
 
-For indexed string fields:
+Use `$like` and `$ilike` to match on indexed string attributes:
 
 ```typescript
 // ✅ Good: Find goals that start with "Get"
@@ -415,7 +418,7 @@ Pattern options:
 
 ### Limit and Offset
 
-For simple pagination:
+Use `limit` and/or `offset` for simple pagination:
 
 ```typescript
 // ✅ Good: Get first 10 todos
@@ -438,9 +441,9 @@ const query = {
 };
 ```
 
-❌ **Common mistake**: Using on nested namespaces
+❌ **Common mistake**: Using limit in nested namespaces
 ```typescript
-// ❌ Bad: Limit only works on top-level namespaces
+// ❌ Bad: Limit only works on top-level namespaces. This will return an error!
 const query = {
   goals: {
     todos: {
@@ -450,59 +453,9 @@ const query = {
 };
 ```
 
-### Cursor-Based Pagination
-
-For more efficient pagination:
-
-```typescript
-// ✅ Good: Get first page
-const query = {
-  todos: {
-    $: { 
-      first: 10 
-    },
-  },
-};
-
-// ✅ Good: Get next page using cursor
-const query = {
-  todos: {
-    $: { 
-      first: 10,
-      after: pageInfo.todos.endCursor 
-    },
-  },
-};
-
-// ✅ Good: Get previous page
-const query = {
-  todos: {
-    $: { 
-      last: 10,
-      before: pageInfo.todos.startCursor 
-    },
-  },
-};
-```
-
-❌ **Common mistake**: Using on nested namespaces
-```typescript
-// ❌ Bad: Cursor pagination only works on top-level namespaces
-const query = {
-  goals: {
-    todos: {
-      $: {
-        first: 10,
-        after: pageInfo.todos.endCursor,
-      },
-    },
-  },
-};
-```
-
 ### Ordering
 
-Change the sort order (default is by creation time):
+Use the `order` operator to sort results
 
 ```typescript
 // ✅ Good: Get todos sorted by dueDate
@@ -528,6 +481,21 @@ const query = {
 };
 ```
 
+❌ **Common mistake**: Using `orderBy` instead of `order`
+```typescript
+// ❌ Bad: `orderBy` is not a valid operator. This will return an error!
+const query = {
+  todos: {
+    $: {
+      orderBy: {
+        serverCreatedAt: 'desc',
+      },
+    },
+  },
+};
+```
+
+
 ❌ **Common mistake**: Ordering non-indexed fields
 ```typescript
 // ❌ Bad: Field must be indexed for ordering
@@ -544,7 +512,7 @@ const query = {
 
 ## Field Selection
 
-Select specific fields to optimize performance:
+Use the `fields` operator to select specific fields to optimize performance:
 
 ```typescript
 // ✅ Good: Only fetch title and status fields
@@ -585,7 +553,7 @@ const query = {
 
 ## Defer queries
 
-You can also defer queries until a condition is met. This is useful when you
+You can defer queries until a condition is met. This is useful when you
 need to wait for some data to be available before you can run your query. Here's
 an example of deferring a fetch for todos until a user is logged in.
 

@@ -68,9 +68,9 @@ The structure of queries from the admin sdk is identical to the client SDK
 ```typescript
 {
   namespace: {
-    $: { /* options for this namespace */ },
+    $: { /* operators for this namespace */ },
     linkedNamespace: {
-      $: { /* options for this linked namespace */ },
+      $: { /* operators for this linked namespace */ },
     },
   },
 }
