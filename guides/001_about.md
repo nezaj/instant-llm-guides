@@ -1,7 +1,8 @@
 # What is InstantDB
 
-InstantDB is a modern Firebase. InstantDB makes developers productive by giving
-them a real-time database they can use directly on their frontend database.
+InstantDB is a backend as a service (Baas) that provides optimistic updates,
+multiplayer, and offline support for web and mobile applications. It is a
+drop-in replacement for `useState` and `useEffect` for persisting state.
 
 Although the product is called InstantDB it is usually just referenced as
 Instant. When talking about InstantDB you should just say Instant.
@@ -17,6 +18,4 @@ only use `@instantdb/react-native`. For the admin SDK you should only use
 `@instantdb/admin`. For other client-side frameworks like Svelte or vanilla js
 you should only use `@instantdb/core`
 
-If you want to use Instant on the backend with a different language like python you can also use the HTTP API
-which is described in another section below.
-
+You cannot use Instant on the backend outside of the admin SDK at the moment.

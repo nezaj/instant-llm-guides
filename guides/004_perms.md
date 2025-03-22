@@ -4,17 +4,64 @@ This guide explains how to use InstantDB's Rule Language to secure your applicat
 
 ## Core Concepts
 
-InstantDB's permission system is based on a declarative rule language that lets you define who can see, create, update, and delete data. This rule language is:
+InstantDB's permission language is built on top of [Google's Common Expression Language
+(CEL)](https://github.com/google/cel-spec/blob/master/doc/langdef.md) and allows you to define rules for viewing, creating, updating, and
+deleting data.
 
-- **Expressive**: Based on CEL (Common Expression Language)
-- **Flexible**: Allows referencing relations and user properties
-- **Code-First**: Can be defined in code or through the dashboard
+At a high level, rules define permissions for four operations on a namespace
+
+- **view**: Controls who can read data (used during queries)
+- **create**: Controls who can create new entities
+- **update**: Controls who can modify existing entities
+- **delete**: Controls who can remove entities
+
+## Rules Strucutre
+
+Rules are defined in the `instant.perms.ts` file and follow a specific structure. Below is the JSON schema for the rules:
+
+```typscript
+export const rulesSchema = {
+  type: 'object',
+  patternProperties: {
+    '^[$a-zA-Z0-9_\\-]+$': {
+      type: 'object',
+      properties: {
+        allow: {
+          type: 'object',
+          properties: {
+            create: { type: 'string' },
+            update: { type: 'string' },
+            delete: { type: 'string' },
+            view: { type: 'string' },
+            $default: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+        bind: {
+          type: 'array',
+          // Use a combination of "items" and "additionalItems" for validation
+          items: { type: 'string' },
+          minItems: 2,
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  additionalProperties: false,
+};
+```
 
 ## Setting Up Permissions
 
-### Code-Based Approach
+To set up permissions:
 
-The recommended way to manage permissions is by defining them in code:
+1. Generate an `instant.perms.ts` file at the project root:
+   ```bash
+   npx instant-cli@latest init
+   ```
+
+2. Edit the file with your permission rules. Here is an example for a personal
+   todo app:
 
 ```typescript
 // ✅ Good: Define permissions in instant.perms.ts
@@ -35,44 +82,16 @@ const rules = {
 export default rules;
 ```
 
-To set up permissions using code:
-
-1. Generate an `instant.perms.ts` file:
-   ```bash
-   npx instant-cli@latest init
-   ```
-
-2. Edit the file with your permission rules
-
 3. Push your changes to production:
    ```bash
    npx instant-cli@latest push perms
    ```
 
-### Dashboard Approach
-
-You can also manage permissions through the InstantDB dashboard:
-
-1. Navigate to your app in the dashboard
-2. Open the permissions editor
-3. Define your rules using JSON format
-
-## Basic Permission Rules
-
-### Rule Structure
-
-Each namespace can have rules for four operations:
-
-- **view**: Controls who can read data (used during queries)
-- **create**: Controls who can create new entities
-- **update**: Controls who can modify existing entities
-- **delete**: Controls who can remove entities
-
-### Default Permissions
+## Default Permission Behavior
 
 By default, all permissions are set to `true` (unrestricted access). If a rule is not explicitly defined, it defaults to allowing the operation.
 
-```javascript
+```
 // ✅ Good: Explicitly defining all permissions
 {
   "todos": {
@@ -88,78 +107,31 @@ By default, all permissions are set to `true` (unrestricted access). If a rule i
 
 This is equivalent to:
 
-```javascript
-// Same as above, with defaults taking effect
+```
 {
   "todos": {
     "allow": {
       "view": "true"
+      // create, update, delete default to true
     }
   }
 }
 ```
 
-Or even:
+And also equivalent to:
 
-```javascript
+```
 // Empty rules = all permissions allowed
 {}
 ```
 
-❌ **Common mistake**: Not setting any restrictions in production
-```javascript
-// ❌ Bad: No restrictions in a production app
-{}
+## Using `$default` in a namespaces
+
+You can explicitly set default rules for all operations within a namespace with
+the `$default` keyword:
+
 ```
-
-## Restricting Access
-
-### Authentication-Based Rules
-
-Limit operations to authenticated users:
-
-```javascript
-// ✅ Good: Require authentication for all operations
-{
-  "todos": {
-    "allow": {
-      "view": "auth.id != null",
-      "create": "auth.id != null",
-      "update": "auth.id != null",
-      "delete": "auth.id != null"
-    }
-  }
-}
-```
-
-### Ownership-Based Rules
-
-Restrict operations to the creator of the data:
-
-```javascript
-// ✅ Good: Only allow owners to modify their data
-{
-  "todos": {
-    "allow": {
-      "view": "auth.id != null",                    // Anyone logged in can view
-      "create": "auth.id != null",                  // Anyone logged in can create
-      "update": "auth.id != null && auth.id == data.creatorId", // Only owner can update
-      "delete": "auth.id != null && auth.id == data.creatorId"  // Only owner can delete
-    }
-  }
-}
-```
-
-## Setting Default Permissions
-
-You can set default rules at different levels:
-
-### Namespace Default
-
-Set default rules for all operations within a namespace:
-
-```javascript
-// ✅ Good: Deny all permissions by default, then explicitly allow some
+// Deny all permissions by default, then explicitly allow some
 {
   "todos": {
     "allow": {
@@ -170,80 +142,59 @@ Set default rules for all operations within a namespace:
 }
 ```
 
-### Global Default
+## Using `auth` and `data` in rules
 
-Set default rules for all namespaces:
+The `auth` object represents the authenticated user and `data` represents the
+current entity being accessed. You can use these objects to create dynamic
+rules:
 
-```javascript
-// ✅ Good: Secure by default with specific exceptions
-{
-  "$default": {
-    "allow": {
-      "view": "false",    // Default deny viewing for all namespaces
-      "create": "false",  // Default deny creation for all namespaces
-      "update": "false",  // Default deny updates for all namespaces
-      "delete": "false"   // Default deny deletion for all namespaces
-    }
-  },
-  "publicPosts": {
-    "allow": {
-      "view": "true"      // Allow viewing public posts for everyone
-    }
-  }
-}
 ```
-
-### Ultimate Default
-
-The most restrictive configuration:
-
-```javascript
-// Denies all permissions unless explicitly allowed
-// Doing this will block new namespaces from being viewed or modified
-// unless you set permissions for them, for production this can be good
-// but for development it can be annoying
-{
-  "$default": {
-    "allow": {
-      "$default": "false"  // Default deny all operations on all namespaces
-    }
-  }
-}
-```
-
-If 
-
-## Advanced Permission Features
-
-### Using Bind for Reusable Logic
-
-The `bind` feature lets you create aliases for complex permission rules:
-
-```javascript
-// ✅ Good: Using bind for reusable permission logic
+// ✅ Good: Using auth and data in rules
 {
   "todos": {
     "allow": {
-      "create": "isOwner || isAdmin",
-      "update": "isOwner || isAdmin",
-      "delete": "isOwner || isAdmin"
+      "view": "auth.id != null",                                // Only authenticated users can view
+      "create": "auth.id != null",                              // Only authenticated users can create
+      "update": "auth.id != null && auth.id == data.ownerId",   // Only the owner can update
+      "delete": "auth.id != null && auth.id == data.ownerId"    // Only the owner can delete
+    }
+  }
+}
+```
+
+## Using Bind for Reusable Logic
+
+The `bind` feature lets you create aliases and reusable logic for your rules.
+
+Bind is an array of strings where each pair of strings defines a name and its
+corresponding expression. You can then reference these names in both `allow` and
+in other bind expressions.
+
+Combining bind with `$default` can make writing permission rules much easier:
+
+```
+// ✅ Good: Use bind to succinctly define permissions
+{
+  "todos": {
+    "allow": {
+      "view": "isLoggedIn",
+      "$default": "isOwner || isAdmin", // You can even use `bind` with `$default`
     },
     "bind": [
-      "isOwner", "auth.id != null && auth.id == data.creatorId",
-      "isAdmin", "auth.email in ['admin@example.com', 'support@example.com']"
+      "isLoggedIn", "auth.id != null",
+      "isOwner", "isLoggedIn && auth.id == data.ownerId",
+      "isAdmin", "isLoggedIn && auth.email in ['admin@example.com', 'support@example.com']"
     ]
   }
 }
 ```
 
-This makes your permission rules more readable and maintainable.
-
 ### Referencing Related Data
 
-Use `ref` to check permissions based on related entities:
+Sometimes you want to express permissions based an an attribute in a linked entity. For those instance you can use `data.ref`
 
-```javascript
-// ✅ Good: Permission based on related data
+```
+// ✅ Good: Permission based on linked data
 {
   "comments": {
     "allow": {
@@ -253,11 +204,92 @@ Use `ref` to check permissions based on related entities:
 }
 ```
 
-### Checking Auth User Relations
+❌ **Common mistake**: Not using `data.ref` to reference linked data
+```
+// ❌ Bad: This will throw an error!
+{
+  "comments": {
+    "allow": {
+      "update": "auth.id in data.post.author.id
+    }
+  }
+}
 
-You can also reference the authenticated user's relations:
+```
 
-```javascript
+When using `data.ref` the last part of the string is the attribute you want to
+access. If you do not specify an attribute an error will occur.
+
+```
+// ✅ Good: Correctly using data.ref to reference a linked attribute
+"view": "auth.id in data.ref('author.id')"
+```
+
+❌ **Common mistake**: Not specifying an attribute when using data.ref
+```
+// ❌ Bad: No attribute specified. This will throw an error!
+"view": "auth.id in data.ref('author')"
+```
+
+`data.ref` will *ALWAYS* return a CEL list of linked entities. So we must use the
+`in` operator to check if a value exists in that list.
+
+```
+✅ Good: Checking if a user is in a list of admins
+"view": "auth.id in data.ref('admins.id')"
+```
+
+❌ **Common mistake**: Using `==` to check if a value exists in a list
+```
+// ❌ Bad: data.ref returns a list! This will throw an error!
+"view": "data.ref('admins.id') == auth.id"
+```
+
+Even if you are referencing a one-to-one relationship, `data.ref` will still return a CEL list. You must extract the first element from the list to compare it properly.
+
+```
+// ✅ Good: Extracting the first element from a one-to-one relationship
+"view": "auth.id == data.ref('owner.id')[0]"
+```
+
+❌ **Common mistake**: Using `==` to check if a value matches in a one-to-one relationship
+```
+// ❌ Bad: data.ref always returns a CEL list. This will throw an error!
+"view": "auth.id == data.ref('owner.id')"
+```
+
+Be careful when checking whether there are no linked entities. Here are a few
+correct ways to do this:
+
+```
+// ✅ Good: Extracting the first element from a CEL list to check if it's empty
+"view": "data.ref('owner.id')[0] != null"
+
+// ✅ Good: Checking if the list is empty
+"view": "data.ref('owner.id') != []"
+
+// ✅ Good: Check the size of the list
+"view": "size(data.ref('owner.id')) > 0"
+```
+
+❌ **Common mistake**: Incorrectly checking for an empty list
+```
+// ❌ Bad: `data.ref` returns a CEL list so checking against null will throw an error!
+"view": "data.ref('owner.id') != null"
+
+// ❌ Bad: `data.ref` is a CEL list and does not support `length`
+"view": "data.ref('owner.id').length > 0"
+
+// ❌ Bad: You must specify an attribute when using `data.ref`
+"view": "data.ref('owner') != []"
+```
+
+### Using `auth.ref` for data linked to the Authenticated User
+
+Use `auth.ref` to reference the authenticated user's linked data. This behaves
+similar to `data.ref` but you *MUST* use the `$user` prefix when referencing auth data:
+
+```
 // ✅ Good: Checking user roles
 {
   "adminActions": {
@@ -268,11 +300,36 @@ You can also reference the authenticated user's relations:
 }
 ```
 
-### Comparing Old and New Data
+❌ **Common mistake**: Missing `$user` prefix with `auth.ref`
+```
+// ❌ Bad: This will throw an error!
+{
+  "adminActions": {
+    "allow": {
+      "create": "'admin' in auth.ref('role.type')"
+    }
+  }
+}
+```
+
+`auth.ref` returns a CEL list, so use `[0]` to extract the first element when needed.
+
+```
+// ✅ Good: Extracting the first element from auth.ref
+"create": "auth.ref('$user.role.type')[0] == 'admin'"
+```
+
+❌ **Common mistake**: Using `==` to check if auth.ref matches a value
+```
+// ❌ Bad: auth.ref returns a list! This will throw an error!
+"create": "auth.ref('$user.role.type') == 'admin'"
+```
+
+### Comparing old and new Data
 
 For update operations, you can compare the existing (`data`) and updated (`newData`) values:
 
-```javascript
+```
 // ✅ Good: Conditionally allowing updates based on changes
 {
   "posts": {
@@ -284,138 +341,73 @@ For update operations, you can compare the existing (`data`) and updated (`newDa
 }
 ```
 
-## Special Permission: Attrs
+One difference between `data.ref` and `newData.ref` is that `newData.ref` does not exist. You can only use `newData` to reference the updated attributes directly.
 
-The `attrs` permission controls the ability to create new attribute types on the fly:
-
-```javascript
-// ✅ Good: Prevent schema expansion in production
-{
-  "attrs": {
-    "allow": {
-      "create": "false"  // Prevent creating new attribute types
-    }
-  }
-}
+❌ **Common mistake**: `newData.ref` does not exist.
 ```
-
-This is particularly important in production to lock down your schema.
-
-## Common Pitfalls and Mistakes
-
-### ❌ Missing `$user` prefix with `auth.ref`
-
-```javascript
-// Incorrect - auth.ref must use the $user prefix
-"delete": "'admin' in auth.ref('roles.name')"
-
-// Correct
-"delete": "'admin' in auth.ref('$user.roles.name')"
-```
-
-### ❌ Using complex expressions directly in `ref`
-
-```javascript
-// Incorrect - ref arguments must be string literals
-"view": "auth.id in data.ref(someVariable + '.members.id')"
-
-// Correct - ref arguments should be string literals
-"view": "auth.id in data.ref('team.members.id')"
-```
-
-### ❌ Not using collection operators properly
-
-```javascript
-// Incorrect - cannot use == with a list
-"view": "data.ref('admins.id') == auth.id"
-
-// Correct
-"view": "auth.id in data.ref('admins.id')"
-```
-
-### ❌ Using wrong comparison types
-
-```javascript
-// Incorrect - comparing string to number without conversion
-"view": "data.count == '5'"
-
-// Correct
-"view": "data.count == 5" 
-```
-
-### Security Patterns
-
-#### Public Read, Authenticated Write
-
-```javascript
-// ✅ Good: Public read, authenticated write
+// ❌ Bad: This will throw an error!
+// This will throw an error because newData.ref does not exist
 {
   "posts": {
     "allow": {
-      "view": "true",                  // Anyone can view
-      "create": "auth.id != null",     // Only authenticated users can create
-      "update": "auth.id == data.authorId", // Only author can update
-      "delete": "auth.id == data.authorId"  // Only author can delete
+      "update": "auth.id == data.authorId && newData.ref('isPublished') == data.ref('isPublished')"
     }
   }
 }
 ```
 
-#### Team-Based Access
+## Common Mistakes
 
-```javascript
-// ✅ Good: Team-based access control
-{
-  "projects": {
-    "allow": {
-      "view": "auth.id in data.ref('team.members.id')", // Team members can view
-      "update": "auth.id in data.ref('team.admins.id')" // Team admins can update
-    }
-  }
-}
+Below are some more common mistakes to avoid when writing permission rules:
+
+❌ **Common mistake**: ref arguments must be string literals
+```
+// ❌ Bad: This will throw an error!
+"view": "auth.id in data.ref(someVariable + '.members.id')"
 ```
 
-#### Role-Based Access
-
-```javascript
-// ✅ Good: Role-based access control
-{
-  "systemSettings": {
-    "allow": {
-      "view": "auth.ref('$user.role.level') >= 1",  // Basic role can view
-      "update": "auth.ref('$user.role.level') >= 3" // High-level role can update
-    }
-  }
-}
+✅ **Correction**: Only string literals are allowed
+```
+"view": "auth.id in data.ref('team.members.id')"
 ```
 
-## Common Permission Examples
+
+## Permission Examples
+
+Below are some permission examples for different types of applications:
 
 ### Blog Platform
 
-```javascript
+```typescript
 // ✅ Good: Blog platform permissions in instant.perms.ts
 import type { InstantRules } from '@instantdb/react';
 
 {
   "posts": {
     "allow": {
-      "view": "true || data.isPublished || auth.id == data.authorId", // Public can see published posts, author can see drafts
-      "create": "auth.id != null",                                    // Logged-in users can create
-      "update": "auth.id == data.authorId",                           // Author can update
-      "delete": "auth.id == data.authorId || isAdmin"                 // Author or admin can delete
+      "view": "data.isPublished || isAuthor",                        // Public can see published posts, author can see drafts
+      "create": "auth.id != null && isAuthor",                       // Authors can create posts
+      "update": "isAuthor || isAdmin",                               // Author or admin can update
+      "delete": "isAuthor || isAdmin"                                // Author or admin can delete
     },
     "bind": [
-      "isAdmin", "auth.ref('$user.role') == 'admin'"
+      "isAuthor", "auth.id == data.authorId",
+      "isAdmin", "auth.ref('$user.role')[0] == 'admin'"
     ]
   },
   "comments": {
     "allow": {
-      "view": "true",                        // Everyone can see comments
-      "create": "auth.id != null",           // Logged-in users can comment
-      "update": "auth.id == data.authorId",  // Author can edit their comment
-      "delete": "auth.id == data.authorId || auth.id == data.ref('post.authorId') || isAdmin" // Comment author, post author, or admin can delete
-    }
+      "view": "true",
+      "create": "isCommentAuthor",
+      "update": "isCommentAuthor",
+      "delete": "isCommentAuthor || isPostAuthor || isAdmin"
+    },
+    "bind": [
+      "isLoggedIn", "auth.id != null",
+      "isPostAuthor", "isLoggedIn && auth.id == data.ref('post.authorId')",
+      "isCommentAuthor", "isLoggedIn && auth.id == data.authorId",
+      "isAdmin", "auth.ref('$user.role')[0] == 'admin'"
+    ]
   }
 } satisfies InstantRules;
 
@@ -424,26 +416,35 @@ export default rules;
 
 ### Todo App
 
-```javascript
+```typescript
 // ✅ Good: Todo app permissions in instant.perms.ts
 import type { InstantRules } from '@instantdb/react';
 
 const rules = {
   "todos": {
     "allow": {
-      "view": "auth.id == data.ownerId || auth.id in data.ref('sharedWith.id')", // Owner or shared-with can view
-      "create": "auth.id != null",                                               // Any logged-in user can create
-      "update": "auth.id == data.ownerId || (auth.id in data.ref('sharedWith.id') && !newData.hasOwnProperty('ownerId'))", // Owner can do anything, shared users can't change ownership
-      "delete": "auth.id == data.ownerId"                                        // Only owner can delete
-    }
+      "view": "isOwner || isShared",
+      "create": "isOwner",
+      "update": "isOwner || (isShared && (data.ownerId == newData.ownerId)", // Owner can do anything, shared users can't change ownership
+      "delete": "isOwner"
+    },
+    "bind": [
+      "isLoggedIn", "auth.id != null",
+      "isShared", "isLoggedIn && auth.id in data.ref('sharedWith.id')",
+      "isOwner", "isLoggedIn && auth.id == data.ownerId",
+      "isSharedWith", "auth.id in data.ref('sharedWith.id')"
+    ]
   },
   "lists": {
     "allow": {
-      "view": "auth.id == data.ownerId || auth.id in data.ref('collaborators.id')", // Owner or collaborator can view
-      "create": "auth.id != null",                                                 // Any logged-in user can create
-      "update": "auth.id == data.ownerId",                                         // Only owner can update
-      "delete": "auth.id == data.ownerId"                                          // Only owner can delete
-    }
+      "$default": "isOwner", // Only owners can create, update, or delete
+      "view": "isOwner || isCollaborator" // Owners and collaborators can view
+    },
+    "bind": [
+      "isLoggedIn", "auth.id != null",
+      "isOwner", "isLoggedIn && auth.id == data.ownerId",
+      "isCollaborator", "isLoggedIn && auth.id in data.ref('collaborators.id')"
+    ]
   }
 } satisfies InstantRules;
 

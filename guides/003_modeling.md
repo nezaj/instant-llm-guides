@@ -10,6 +10,7 @@ InstantDB's schema consists of three main building blocks:
 - **Namespaces**: Collections of entities (similar to tables or collections)
 - **Attributes**: Properties/fields of entities with defined types
 - **Links**: Relationships between entities in different namespaces
+- **Rooms**: Ephemeral namespaces for sharing non-persistent data like cursors
 
 ## Setting Up Your Schema
 
@@ -19,7 +20,7 @@ First, create a `instant.schema.ts` file in your project:
 
 ```typescript
 // instant.schema.ts
-import { i } from '@instantdb/core';
+import { i } from '@instantdb/react';
 
 const _schema = i.schema({
   entities: {
@@ -27,6 +28,9 @@ const _schema = i.schema({
   },
   links: {
     // Define relationships between namespaces here
+  },
+  rooms: {
+    // Define ephemeral namespaces here (optional)
   },
 });
 
@@ -118,7 +122,9 @@ The `i.date()` type accepts:
 
 ### Unique Constraints
 
-Mark attributes that should have unique values across all entities:
+Unique attributes:
+- Are automatically indexed for fast lookups
+- Will reject new entities that would violate uniqueness
 
 ```typescript
 // ✅ Good: Adding a unique constraint
@@ -131,10 +137,6 @@ const _schema = i.schema({
   },
 });
 ```
-
-Unique attributes:
-- Are automatically indexed for fast lookups
-- Will reject new entities that would violate uniqueness
 
 ### Indexing for Performance
 
@@ -169,7 +171,7 @@ const query = { posts: { $: { where: { category: 'news' } } } };
 
 ## Defining Relationships with Links
 
-Links connect entities from different namespaces. InstantDB defines relationships in both forward and reverse directions.
+Links connect entities from different namespaces.
 
 ```typescript
 // ✅ Good: Defining a link between posts and profiles
@@ -330,7 +332,7 @@ const _schema = i.schema({
       email: i.string().unique().indexed(),
     }),
     profiles: i.entity({
-      nickname: i.string(),
+      nickname: i.string().unique(),
       bio: i.string(),
       createdAt: i.date().indexed(),
     }),
@@ -384,15 +386,37 @@ export default schema;
 
 ## Publishing Your Schema
 
-After defining your schema, you need to publish it to InstantDB using the CLI:
+After defining your schema, you need to publish it for it to take effect:
 
 ```bash
 npx instant-cli@latest push
 ```
 
+## TypeScript Integration
+
+Leverage utility types for type-safe entities and relationships:
+
+```typescript
+// app/page.tsx
+import { InstaQLEntity } from '@instantdb/react';
+import { AppSchema } from '../instant.schema';
+
+// Type-safe entity from your schema
+type Post = InstaQLEntity<AppSchema, 'posts'>;
+
+// Type-safe entity with related data
+type PostWithAuthor = InstaQLEntity<AppSchema, 'posts', { author: {} }>;
+
+// Now you can use these types in your components
+function PostEditor({ post }: { post: Post }) {
+  // TypeScript knows all the properties of the post
+  return <h1>{post.title}</h1>;
+}
+```
+
 ## Schema Modifications
 
-To rename or delete attributes after creation:
+To rename or delete attributes after creation inform users to:
 
 1. Go to the [InstantDB Dashboard](https://instantdb.com/dash)
 2. Navigate to "Explorer"
@@ -407,26 +431,4 @@ To rename or delete attributes after creation:
 2. **Use unique constraints**: For attributes that should be unique (usernames, slugs, etc.)
 3. **Label links clearly**: Use descriptive names for link labels
 4. **Consider cascade deletions**: Set `onDelete: 'cascade'` for dependent relationships
-5. **Respect system namespaces**: Always link to `$users` in the reverse direction
-6. **Use TypeScript**: Leverage InstantDB's TypeScript integration for better autocomplete and error checking
-
-## TypeScript Integration
-
-InstantDB provides excellent TypeScript integration. You can use utility types to get type safety:
-
-```typescript
-import { InstaQLEntity } from '@instantdb/react';
-import { AppSchema } from './instant.schema';
-
-// Type-safe entity from your schema
-type Post = InstaQLEntity<AppSchema, 'posts'>;
-
-// Type-safe entity with related data
-type PostWithAuthor = InstaQLEntity<AppSchema, 'posts', { author: {} }>;
-
-// Now you can use these types in your components
-function PostEditor({ post }: { post: Post }) {
-  // TypeScript knows all the properties of the post
-  return <h1>{post.title}</h1>;
-}
-```
+5. **Use Utility Types**: Leverage InstantDB's TypeScript integration for better autocomplete and error checking
