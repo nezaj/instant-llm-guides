@@ -237,13 +237,6 @@ db.transact(db.tx.todos[id()].update({
   text: "Properly generated ID todo"
 }));
 ```
-❌ **Common mistake**: Calling `update` on `$users` namespace
-```typescript
-// ❌ Bad: `$users` is a special system table, don't update it directly. You can only link or unlink to it.
-db.transact(db.tx.$users[id()].update({
-  email: "new-user@instantdb.com"
-}));
-```
 
 Use `merge` for updating nested objects without overwriting unspecified fields:
 
@@ -265,7 +258,7 @@ db.transact(db.tx.profiles[userId].merge({
 }));
 ```
 
-Remove keys from nested objects by setting them to `null`:
+You can use `merge` to remove keys from nested objects by setting the key to `null`:
 
 ❌ **Common mistake**: Calling `update` instead of `merge` for removing keys
 ```
@@ -358,23 +351,23 @@ createManyTodos(1000);
 
 ## Common mistakes with queries
 
-Query multiple namespaces in one go by specifying mulitple namespaces:
+Nest namespaces to fetch associated entities:
 
-❌ **Common mistake**: Nesting namespaces incorrectly
+❌ **Common mistake**: Not nesting namespaces will fetch unrelated entities
 ```
-// ❌ Bad: This will fetch todos associated with goals instead of all goals and todos
-const query = { goals: { todos: {} };
-```
-
-✅ **Correction**: Use the correct syntax to fetch multiple namespaces
-```
-// ✅ Good: Fetch both goals and todos
+// ❌ Bad: This will fetch all todos and all goals instead of todos associated with their goals
 const query = { goals: {}, todos: {} };
+```
+
+✅ **Correction**: Nest namespaces to fetch associated entities
+```
+// ✅ Good: Fetch goals and their associated todos
+const query = { goals: { todos: {} };
 ```
 
 Use `where` operator to filter entities:
 
-❌ **Common mistake**: Placing filter at wrong level
+❌ **Common mistake**: Placing `where` at the wrong level
 ```typescript
 // ❌ Bad: Filter must be inside $
 const query = {
@@ -384,7 +377,7 @@ const query = {
 };
 ```
 
-✅ **Correction**: Place filter inside `$` operator
+✅ **Correction**: Place `where` inside the `$` operator
 ```typescript
 // ✅ Good: Fetch a specific goal by ID
 const query = {
@@ -578,12 +571,13 @@ const query = {
 
 Use `db.query` in the admin SDK instead of `db.useQuery`. It is an async API without loading states. We wrap queries in try catch blocks to handle errors. Unlike the client SDK, queries in the admin SDK bypass permission checks
 
-❌ **Common mistake**: Using client-side syntax
+❌ **Common mistake**: Using `db.useQuery` in the admin SDK
 ```javascript
 // ❌ Bad: Don't use useQuery on the server
 const { data, isLoading, error } = db.useQuery({ todos: {} }); // Wrong approach!
 ```
 
+✅ **Correction**: Use `db.query` in the admin SDK
 ```javascript
 // ✅ Good: Server-side querying
 const fetchTodos = async () => {
@@ -654,8 +648,9 @@ db.useQuery({ profiles: {} });
 
 InstantDB does not provide built-in username/password authentication. 
 
-❌ **Common mistake**: Using password-based authentication in client-side code with `@instantdb/react`
+❌ **Common mistake**: Using password-based authentication in client-side code
 
-✅ **Correction**: Use Instant's magic code auth flow instead
+✅ **Correction**: Use Instant's magic code or OAuth flows instead in client-side code
+
 
 If you need traditional password-based authentication, you must implement it as a custom auth flow using the Admin SDK.
