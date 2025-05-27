@@ -41,12 +41,12 @@ db.auth.sendMagicCode({ email })
 db.auth.signInWithMagicCode({ email, code })
 db.auth.signOut(opts?)
 
-// Room Hooks (on db.rooms)
+// Room Hooks (on db.rooms) - IMPORTANT: These are called on db.rooms, not on room instances
 db.rooms.useTopicEffect(room, topic, onEvent)
-db.rooms.usePublishTopic(room, topic)
-db.rooms.usePresence(room, opts?)
+db.rooms.usePublishTopic(room, topic) // returns: (data) => void
+db.rooms.usePresence(room, opts?) // returns: { peers, user, publishPresence, isLoading }
 db.rooms.useSyncPresence(room, data, deps?)
-db.rooms.useTypingIndicator(room, inputName, opts?)
+db.rooms.useTypingIndicator(room, inputName, opts?) // returns: { active, setActive, inputProps }
 
 // Components
 <Cursors room={room} {...props} />
@@ -1372,21 +1372,30 @@ function CollaborativeDocument({ docId, userId, userName }) {
 }
 ```
 
+## Common Patterns
+
+
 ## Common Mistakes
 
 ```typescript
-// ❌ Wrong: Using presence for persistent data
-publishPresence({ importantData: 'This will be lost!' });
+// WRONG: These methods don't exist
+// ❌ room.usePresence()
+// ❌ room.publishPresence()
+// ❌ db.usePresence()
 
-// ✅ Correct: Use transact for persistence
-db.transact(db.tx.userData[id()].update({ importantData: 'Saved!' }));
+// ✅ CORRECT: Using presence
+const room = db.room('chat', roomId);
+const { peers, publishPresence } = db.rooms.usePresence(room);
+publishPresence({ status: 'online' });
 
-// ❌ Wrong: Not handling loading states
-return <div>Hello {myPresence.name}</div>; // myPresence might be undefined
+// ✅ CORRECT: Publishing topics
+const room = db.room('chat', roomId);
+const publishTopic = db.rooms.usePublishTopic(room, 'emoji');
+publishTopic({ emoji: '🔥' });
 
-// ✅ Correct: Check for presence data
-if (!myPresence) return <div>Loading...</div>;
-return <div>Hello {myPresence.name}</div>;
+// ✅ CORRECT: Typing indicators
+const room = db.room('chat', roomId);
+const { active, setActive, inputProps } = db.rooms.useTypingIndicator(room, 'chat-input');
 ```
 
 ## Best Practices
