@@ -10,6 +10,48 @@ Backend-as-a-Service (BaaS) with optimistic updates, multiplayer, offline suppor
 * Relational data support
 * Web and mobile compatible
 
+## API
+
+CRITICAL: These are the only APIs from the react package you need to know. do not hallucinate other APIs.
+
+```
+// Initialization
+init<Schema>(config: InstantConfig<Schema>): InstantReactWebDatabase<Schema>
+
+// Transaction builder
+tx: TxChunk<Schema>
+id(): string
+lookup(attribute: string, value: any): Lookup
+
+// Schema builder
+i.schema({ entities, links?, rooms? })
+i.entity(attrs)
+i.string(), i.number(), i.boolean(), i.date(), i.json(), i.any()
+
+// Core Database Methods (on db instance)
+db.transact(chunks)
+
+// React Hooks (on db instance)
+db.useQuery(query, opts?)
+db.useAuth()
+db.room(type?, id?)
+
+// Auth Methods (on db.auth)
+db.auth.sendMagicCode({ email })
+db.auth.signInWithMagicCode({ email, code })
+db.auth.signOut(opts?)
+
+// Room Hooks (on db.rooms)
+db.rooms.useTopicEffect(room, topic, onEvent)
+db.rooms.usePublishTopic(room, topic)
+db.rooms.usePresence(room, opts?)
+db.rooms.useSyncPresence(room, data, deps?)
+db.rooms.useTypingIndicator(room, inputName, opts?)
+
+// Components
+<Cursors room={room} {...props} />
+```
+
 # How to initialize DB
 
 Create a central DB instance (single connection maintained per app ID):
@@ -1090,3 +1132,267 @@ export default App;
 1. **Clear Error Handling** - Helpful error messages
 2. **Loading States** - Show indicators during async ops
 3. **Resend Functionality** - Allow new code requests
+
+# How to use presence, cursors, and real-time features
+
+InstantDB provides three primitives for ephemeral real-time experiences:
+
+- **Rooms**: Temporary contexts for real-time events
+- **Presence**: Persistent state shared between peers (auto-cleaned on disconnect)  
+- **Topics**: Fire-and-forget events without persistence
+
+## When to Use Each
+
+- **`transact`**: Persist to database (chat messages)
+- **`presence`**: Temporary persistence in room (who's online)
+- **`topics`**: Broadcast without persistence (emoji reactions)
+
+## Rooms Setup
+
+```typescript
+// Basic room
+const room = db.room('chat', 'room-123');
+
+// Schema for type safety
+const _schema = i.schema({
+  rooms: {
+    chat: {
+      presence: i.entity({
+        name: i.string(),
+        status: i.string(),
+        cursorX: i.number(),
+        cursorY: i.number(),
+      }),
+      topics: {
+        emoji: i.entity({
+          emoji: i.string(),
+          x: i.number(),
+          y: i.number(),
+        }),
+      },
+    },
+  },
+});
+```
+
+## Presence - Who's Online
+
+```typescript
+function OnlineUsers() {
+  const room = db.room('chat', 'room-123');
+  
+  const { user: myPresence, peers, publishPresence } = db.rooms.usePresence(room, {
+    initialData: { name: 'Alice', status: 'active' }
+  });
+
+  const updateStatus = (status: string) => {
+    publishPresence({ status });
+  };
+
+  if (!myPresence) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <div>You: {myPresence.name} ({myPresence.status})</div>
+      <ul>
+        {Object.entries(peers).map(([peerId, peer]) => (
+          <li key={peerId}>{peer.name} ({peer.status})</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+## Optimized Presence
+
+```typescript
+// Subscribe to specific keys only
+const { user, peers } = db.rooms.usePresence(room, {
+  keys: ['status'], // Only re-render when status changes
+});
+
+// Write-only (no re-renders)
+const { publishPresence } = db.rooms.usePresence(room, {
+  peers: [],
+  user: false,
+});
+
+// Auto-sync presence
+db.rooms.useSyncPresence(room, { id: userId, name: userName });
+```
+
+## Topics - Fire-and-Forget Events
+
+```typescript
+function EmojiReactions() {
+  const room = db.room('chat', 'room-123');
+  
+  const publishEmoji = db.rooms.usePublishTopic(room, 'emoji');
+  
+  // Subscribe to events from peers
+  db.rooms.useTopicEffect(room, 'emoji', ({ emoji, x, y }) => {
+    showEmojiAnimation(emoji, x, y);
+  });
+  
+  const sendEmoji = (emoji: string) => {
+    const position = { x: Math.random() * 100, y: Math.random() * 100 };
+    showEmojiAnimation(emoji, position.x, position.y); // Show locally
+    publishEmoji({ emoji, ...position }); // Broadcast to peers
+  };
+  
+  return (
+    <div>
+      <button onClick={() => sendEmoji('🎉')}>🎉</button>
+      <button onClick={() => sendEmoji('❤️')}>❤️</button>
+    </div>
+  );
+}
+```
+
+## Built-in Components (React)
+
+### Cursors
+```tsx
+import { Cursors } from '@instantdb/react';
+
+function CollaborativeCanvas() {
+  const room = db.room('canvas', 'canvas-123');
+  
+  return (
+    <Cursors room={room} className="h-full w-full" userCursorColor="tomato">
+      <div>Move your cursor around!</div>
+    </Cursors>
+  );
+}
+
+// Custom cursor rendering
+const renderCursor = ({ color, presence }) => (
+  <div style={{ color }}>
+    <svg width="20" height="20">
+      <circle cx="10" cy="10" r="8" fill={color} />
+    </svg>
+    <span>{presence.name}</span>
+  </div>
+);
+
+<Cursors room={room} renderCursor={renderCursor} userCursorColor="blue">
+  {/* content */}
+</Cursors>
+```
+
+### Typing Indicators
+```tsx
+function ChatInput() {
+  const room = db.room('chat', 'room-123');
+  const [message, setMessage] = useState('');
+  
+  const typing = db.rooms.useTypingIndicator(room, 'chat');
+  
+  const handleKeyDown = (e) => {
+    typing.inputProps.onKeyDown(e);
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(message);
+      setMessage('');
+    }
+  };
+  
+  return (
+    <div>
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={typing.inputProps.onBlur}
+      />
+      {typing.active.length > 0 && (
+        <div>{formatTypingUsers(typing.active)}</div>
+      )}
+    </div>
+  );
+}
+```
+
+## Complete Example
+
+```tsx
+function CollaborativeDocument({ docId, userId, userName }) {
+  const room = db.room('document', docId);
+  const [content, setContent] = useState('');
+  
+  // Sync presence
+  db.rooms.useSyncPresence(room, { id: userId, name: userName });
+  
+  const { peers } = db.rooms.usePresence(room);
+  const typing = db.rooms.useTypingIndicator(room, 'editor');
+  const publishReaction = db.rooms.usePublishTopic(room, 'reaction');
+  
+  db.rooms.useTopicEffect(room, 'reaction', ({ emoji, userName }) => {
+    showNotification(`${userName} reacted with ${emoji}`);
+  });
+  
+  return (
+    <div>
+      {/* Online users */}
+      <div className="online-users">
+        {Object.values(peers).map(peer => (
+          <div key={peer.id}>{peer.name}</div>
+        ))}
+      </div>
+      
+      {/* Document with cursors */}
+      <Cursors room={room}>
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          onKeyDown={typing.inputProps.onKeyDown}
+          onBlur={typing.inputProps.onBlur}
+        />
+      </Cursors>
+      
+      {/* Typing indicator */}
+      {typing.active.length > 0 && (
+        <div>{formatTypingUsers(typing.active)}</div>
+      )}
+      
+      {/* Reactions */}
+      <div>
+        {['👍', '❤️', '🎉'].map(emoji => (
+          <button 
+            key={emoji}
+            onClick={() => publishReaction({ emoji, userName })}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+## Common Mistakes
+
+```typescript
+// ❌ Wrong: Using presence for persistent data
+publishPresence({ importantData: 'This will be lost!' });
+
+// ✅ Correct: Use transact for persistence
+db.transact(db.tx.userData[id()].update({ importantData: 'Saved!' }));
+
+// ❌ Wrong: Not handling loading states
+return <div>Hello {myPresence.name}</div>; // myPresence might be undefined
+
+// ✅ Correct: Check for presence data
+if (!myPresence) return <div>Loading...</div>;
+return <div>Hello {myPresence.name}</div>;
+```
+
+## Best Practices
+
+1. **Presence auto-cleans** on disconnect
+2. **Choose right primitive**: transact (persist), presence (temp persist), topics (broadcast)
+3. **Type rooms** with schema for TypeScript support
+4. **Optimize subscriptions** with `keys` parameter
+5. **Handle loading states** before rendering presence data
