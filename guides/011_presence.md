@@ -1,0 +1,452 @@
+# InstantDB Presence, Cursors, and Activity Guide
+
+This guide explains how to add real-time ephemeral features like presence, cursors, and live reactions to your InstantDB applications.
+
+## Core Concepts
+
+InstantDB provides three primitives for building ephemeral experiences:
+
+- **Rooms**: Temporary contexts for real-time events. Users in the same room receive updates from each other
+- **Presence**: Persistent state shared between peers in a room (auto-cleaned on disconnect)
+- **Topics**: Fire-and-forget events for broadcasting without persistence
+
+### When to Use Each
+
+- **Use `transact`**: When you need to persist data to the database (e.g., sending a chat message)
+- **Use `presence`**: When you need temporary persistence in a room (e.g., who's currently online)
+- **Use `topics`**: When you need to broadcast without persistence (e.g., live emoji reactions)
+
+## Setting Up Rooms
+
+### Basic Room Setup
+
+```typescript
+import { init } from '@instantdb/react';
+
+const db = init({ appId: process.env.NEXT_PUBLIC_INSTANT_APP_ID });
+
+// Create a room with type and ID
+const room = db.room('chat', 'room-123');
+
+// Or use default room (auto-generated ID)
+const defaultRoom = db.room();
+```
+
+### Adding TypeScript Support
+
+Define room schemas for type safety:
+
+```typescript
+// instant.schema.ts
+import { i } from '@instantdb/react';
+
+const _schema = i.schema({
+  entities: {
+    // ... your entities
+  },
+  rooms: {
+    chat: {
+      presence: i.entity({
+        name: i.string(),
+        status: i.string(),
+        cursorX: i.number(),
+        cursorY: i.number(),
+      }),
+      topics: {
+        emoji: i.entity({
+          emoji: i.string(),
+          x: i.number(),
+          y: i.number(),
+        }),
+        typing: i.entity({
+          isTyping: i.boolean(),
+        }),
+      },
+    },
+  },
+});
+
+type _AppSchema = typeof _schema;
+interface AppSchema extends _AppSchema {}
+const schema: AppSchema = _schema;
+
+export type { AppSchema };
+export default schema;
+```
+
+## Working with Presence
+
+### Basic Presence - Who's Online
+
+```typescript
+// ✅ Good: Show who's online in a room
+function OnlineUsers() {
+  const room = db.room('chat', 'room-123');
+  
+  const {
+    user: myPresence,
+    peers,
+    publishPresence,
+  } = db.rooms.usePresence(room, {
+    initialData: { 
+      name: 'Alice',
+      status: 'active' 
+    }
+  });
+
+  // Update presence when status changes
+  const updateStatus = (status: string) => {
+    publishPresence({ status });
+  };
+
+  if (!myPresence) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <h3>Online Users</h3>
+      <div>You: {myPresence.name} ({myPresence.status})</div>
+      <ul>
+        {Object.entries(peers).map(([peerId, peer]) => (
+          <li key={peerId}>
+            {peer.name} ({peer.status})
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+### Optimized Presence Subscriptions
+
+```typescript
+// ✅ Good: Only subscribe to specific presence keys
+const { user, peers, publishPresence } = db.rooms.usePresence(room, {
+  keys: ['status'], // Only re-render when status changes
+});
+
+// ✅ Good: Write-only presence (no re-renders)
+const { publishPresence } = db.rooms.usePresence(room, {
+  peers: [],
+  user: false,
+});
+```
+
+### Sync Presence Helper
+
+For simple presence syncing:
+
+```typescript
+// ✅ Good: Automatically sync user presence
+function ChatRoom({ userId, userName }) {
+  const room = db.room('chat', 'room-123');
+  
+  // Sync presence data
+  db.rooms.useSyncPresence(room, {
+    id: userId,
+    name: userName,
+  });
+  
+  // Rest of your component...
+}
+```
+
+## Working with Topics
+
+### Publishing and Subscribing to Topics
+
+```typescript
+// ✅ Good: Live emoji reactions
+function EmojiReactions() {
+  const room = db.room('chat', 'room-123');
+  
+  // Get publish function for emoji topic
+  const publishEmoji = db.rooms.usePublishTopic(room, 'emoji');
+  
+  // Subscribe to emoji events from peers
+  db.rooms.useTopicEffect(room, 'emoji', ({ emoji, x, y }) => {
+    // Display emoji animation at position
+    showEmojiAnimation(emoji, x, y);
+  });
+  
+  const sendEmoji = (emoji: string) => {
+    const position = { x: Math.random() * 100, y: Math.random() * 100 };
+    
+    // Show locally
+    showEmojiAnimation(emoji, position.x, position.y);
+    
+    // Broadcast to peers
+    publishEmoji({ emoji, ...position });
+  };
+  
+  return (
+    <div>
+      <button onClick={() => sendEmoji('🎉')}>🎉</button>
+      <button onClick={() => sendEmoji('❤️')}>❤️</button>
+      <button onClick={() => sendEmoji('👍')}>👍</button>
+    </div>
+  );
+}
+```
+
+## Built-in Components (React Only)
+
+### Cursors Component
+
+Add multiplayer cursors with a single component:
+
+```tsx
+// ✅ Good: Basic cursor implementation
+import { Cursors } from '@instantdb/react';
+
+function CollaborativeCanvas() {
+  const room = db.room('canvas', 'canvas-123');
+  
+  return (
+    <Cursors 
+      room={room} 
+      className="h-full w-full"
+      userCursorColor="tomato"
+    >
+      <div className="canvas-content">
+        Move your cursor around!
+      </div>
+    </Cursors>
+  );
+}
+```
+
+### Custom Cursor Rendering
+
+```tsx
+// ✅ Good: Custom cursor component
+function CustomCursorCanvas() {
+  const room = db.room('canvas', 'canvas-123');
+  
+  const renderCursor = ({ color, presence }) => (
+    <div style={{ color }}>
+      <svg width="20" height="20">
+        <circle cx="10" cy="10" r="8" fill={color} />
+      </svg>
+      <span>{presence.name}</span>
+    </div>
+  );
+  
+  return (
+    <Cursors 
+      room={room}
+      renderCursor={renderCursor}
+      userCursorColor="blue"
+    >
+      {/* Your content */}
+    </Cursors>
+  );
+}
+```
+
+### Multiple Cursor Spaces
+
+```tsx
+// ✅ Good: Separate cursor spaces per tab
+function TabbedEditor() {
+  const room = db.room('editor', 'doc-123');
+  const [activeTab, setActiveTab] = useState(0);
+  
+  return (
+    <div>
+      {tabs.map((tab, index) => (
+        <div key={tab.id} hidden={activeTab !== index}>
+          <Cursors 
+            room={room} 
+            spaceId={`tab-${tab.id}`}
+            className="tab-content"
+          >
+            {tab.content}
+          </Cursors>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Typing Indicators
+
+```tsx
+// ✅ Good: Chat typing indicator
+function ChatInput() {
+  const room = db.room('chat', 'room-123');
+  const [message, setMessage] = useState('');
+  
+  // Sync user presence
+  db.rooms.useSyncPresence(room, { 
+    id: userId,
+    name: userName 
+  });
+  
+  // Use typing indicator hook
+  const typing = db.rooms.useTypingIndicator(room, 'chat');
+  
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle typing indicator
+    typing.inputProps.onKeyDown(e);
+    
+    // Send message on Enter
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(message);
+      setMessage('');
+    }
+  };
+  
+  return (
+    <div>
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={typing.inputProps.onBlur}
+        placeholder="Type a message..."
+      />
+      <div className="typing-indicator">
+        {typing.active.length > 0 && (
+          <span>{formatTypingUsers(typing.active)}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatTypingUsers(users) {
+  if (users.length === 1) return `${users[0].name} is typing...`;
+  if (users.length === 2) return `${users[0].name} and ${users[1].name} are typing...`;
+  return `${users[0].name} and ${users.length - 1} others are typing...`;
+}
+```
+
+## Complete Example: Collaborative Document
+
+```tsx
+// ✅ Good: Full collaborative document example
+import { useState } from 'react';
+import { init, Cursors } from '@instantdb/react';
+import schema from './instant.schema';
+
+const db = init({ 
+  appId: process.env.NEXT_PUBLIC_INSTANT_APP_ID,
+  schema 
+});
+
+function CollaborativeDocument({ docId, userId, userName }) {
+  const room = db.room('document', docId);
+  const [content, setContent] = useState('');
+  
+  // Sync user presence
+  db.rooms.useSyncPresence(room, {
+    id: userId,
+    name: userName,
+    color: getUserColor(userId),
+  });
+  
+  // Get online users
+  const { peers } = db.rooms.usePresence(room);
+  
+  // Setup typing indicator
+  const typing = db.rooms.useTypingIndicator(room, 'editor');
+  
+  // Setup emoji reactions
+  const publishReaction = db.rooms.usePublishTopic(room, 'reaction');
+  
+  db.rooms.useTopicEffect(room, 'reaction', ({ emoji, userName }) => {
+    showNotification(`${userName} reacted with ${emoji}`);
+  });
+  
+  return (
+    <div className="collaborative-doc">
+      {/* Online users */}
+      <div className="online-users">
+        {Object.values(peers).map(peer => (
+          <div 
+            key={peer.id} 
+            className="user-avatar"
+            style={{ backgroundColor: peer.color }}
+          >
+            {peer.name[0]}
+          </div>
+        ))}
+      </div>
+      
+      {/* Document with cursors */}
+      <Cursors room={room} className="document-area">
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          onKeyDown={typing.inputProps.onKeyDown}
+          onBlur={typing.inputProps.onBlur}
+          className="document-editor"
+        />
+      </Cursors>
+      
+      {/* Typing indicator */}
+      {typing.active.length > 0 && (
+        <div className="typing-status">
+          {formatTypingUsers(typing.active)}
+        </div>
+      )}
+      
+      {/* Reaction buttons */}
+      <div className="reactions">
+        {['👍', '❤️', '🎉'].map(emoji => (
+          <button 
+            key={emoji}
+            onClick={() => publishReaction({ emoji, userName })}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function getUserColor(userId: string): string {
+  const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8'];
+  const index = userId.charCodeAt(0) % colors.length;
+  return colors[index];
+}
+```
+
+## Common Mistakes
+
+❌ **Using presence for persistent data**
+```typescript
+// ❌ Bad: This data will be lost when user disconnects
+publishPresence({ importantData: 'This should be saved!' });
+```
+
+✅ **Use transact for persistent data**
+```typescript
+// ✅ Good: Save important data to database
+db.transact(db.tx.userData[id()].update({ importantData: 'Saved!' }));
+```
+
+❌ **Not handling loading states**
+```typescript
+// ❌ Bad: myPresence might be undefined initially
+return <div>Hello {myPresence.name}</div>;
+```
+
+✅ **Check for presence data**
+```typescript
+// ✅ Good: Handle loading state
+if (!myPresence) return <div>Loading...</div>;
+return <div>Hello {myPresence.name}</div>;
+```
+
+## Best Practices
+
+1. **Clean up presence**: Presence is automatically cleaned when users disconnect
+2. **Use appropriate primitives**: Choose between transact, presence, and topics based on persistence needs
+3. **Type your rooms**: Use schema to get TypeScript support for room data
+4. **Optimize subscriptions**: Use `keys` parameter to limit presence updates
+5. **Handle connection states**: Check for presence data before rendering
