@@ -1372,9 +1372,6 @@ function CollaborativeDocument({ docId, userId, userName }) {
 }
 ```
 
-## Common Patterns
-
-
 ## Common Mistakes
 
 ```typescript
