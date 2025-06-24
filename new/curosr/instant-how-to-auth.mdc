@@ -1,0 +1,167 @@
+---
+description: How to use auth with InstantDB
+globs: 
+alwaysApply: false
+---
+# How to implenent authentication
+
+Instant supports magic code authentication. There is no built-in username/password authentication.
+
+## Core concepts
+1. User enters email
+2. InstantDB sends verification code
+3. User enters code
+4. Authentication complete
+
+## Complete Example
+
+```typescript
+// instant.schema.ts
+import { i } from '@instantdb/react';
+
+const _schema = i.schema({
+  entities: {
+    $users: i.entity({
+      email: i.string().unique().indexed(),
+    }),
+  },
+});
+
+type _AppSchema = typeof _schema;
+interface AppSchema extends _AppSchema {}
+const schema: AppSchema = _schema;
+
+export type { AppSchema };
+export default schema;
+
+// lib/db.ts
+import { init } from '@instantdb/react';
+import schema from './instant.schema';
+
+export const db = init({
+  appId: process.env.NEXT_PUBLIC_INSTANT_APP_ID!,
+  schema
+});
+
+// app/page.tsx
+"use client";
+
+import React, { useState } from "react";
+import { User } from "@instantdb/react";
+import { db } from "../lib/db";
+
+function App() {
+  const { isLoading, user, error } = db.useAuth();
+
+  if (isLoading) return;
+  if (error) return <div className="p-4 text-red-500">Uh oh! {error.message}</div>;
+  if (user) return <Main user={user} />;
+  return <Login />;
+}
+
+function Main({ user }: { user: User }) {
+  return (
+    <div className="p-4 space-y-4">
+      <h1 className="text-2xl font-bold">Hello {user.email}!</h1>
+      <button
+        onClick={() => db.auth.signOut()}
+        className="px-3 py-1 bg-blue-600 text-white font-bold hover:bg-blue-700"
+      >
+        Sign out
+      </button>
+    </div>
+  );
+}
+
+function Login() {
+  const [sentEmail, setSentEmail] = useState("");
+
+  return (
+    <div className="flex justify-center items-center min-h-screen">
+      <div className="max-w-sm">
+        {!sentEmail ? (
+          <EmailStep onSendEmail={setSentEmail} />
+        ) : (
+          <CodeStep sentEmail={sentEmail} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EmailStep({ onSendEmail }: { onSendEmail: (email: string) => void }) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const email = inputRef.current!.value;
+    onSendEmail(email);
+    db.auth.sendMagicCode({ email }).catch((err) => {
+      alert("Uh oh :" + err.body?.message);
+      onSendEmail("");
+    });
+  };
+  
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
+      <h2 className="text-xl font-bold">Let's log you in</h2>
+      <p className="text-gray-700">
+        Enter your email, and we'll send you a verification code.
+      </p>
+      <input
+        ref={inputRef}
+        type="email"
+        className="border border-gray-300 px-3 py-1 w-full"
+        placeholder="Enter your email"
+        required
+        autoFocus
+      />
+      <button
+        type="submit"
+        className="px-3 py-1 bg-blue-600 text-white font-bold hover:bg-blue-700 w-full"
+      >
+        Send Code
+      </button>
+    </form>
+  );
+}
+
+function CodeStep({ sentEmail }: { sentEmail: string }) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const code = inputRef.current!.value;
+    db.auth.signInWithMagicCode({ email: sentEmail, code }).catch((err) => {
+      inputRef.current!.value = "";
+      alert("Uh oh :" + err.body?.message);
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
+      <h2 className="text-xl font-bold">Enter your code</h2>
+      <p className="text-gray-700">
+        We sent an email to <strong>{sentEmail}</strong>
+      </p>
+      <input
+        ref={inputRef}
+        type="text"
+        className="border border-gray-300 px-3 py-1 w-full"
+        placeholder="123456..."
+        required
+        autoFocus
+      />
+      <button
+        type="submit"
+        className="px-3 py-1 bg-blue-600 text-white font-bold hover:bg-blue-700 w-full"
+      >
+        Verify Code
+      </button>
+    </form>
+  );
+}
+
+export default App;
+```
+

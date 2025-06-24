@@ -1,0 +1,423 @@
+---
+description: The basics of how to do queries and transactions with InstantDB
+globs: 
+alwaysApply: false
+---
+# How to do queries
+
+## Core Concepts
+- **Namespaces**: Entity collections (tables)
+- **Queries**: JS objects describing data needs
+- **Associations**: Entity relationships
+
+## Query Structure
+```typescript
+{
+  namespace1: {
+    $: { /* operators */ },
+    linkedNamespace: { $: { /* operators */ } }
+  },
+  namespace2: { /* ... */ }
+}
+```
+
+## Basic Usage
+
+**Required**: Handle `isLoading` and `error` states:
+```typescript
+const { isLoading, data, error } = db.useQuery({ todos: {} })
+if (isLoading) return
+if (error) return (<div>Error: {error.message}</div>)
+return <pre>{JSON.stringify(data, null, 2)}</pre>
+```
+
+### Fetch Operations
+```typescript
+// Single namespace
+const query = { goals: {} }
+
+// Multiple namespaces
+const query = { goals: {}, todos: {} }
+```
+
+## Filtering
+
+### By ID
+```typescript
+const query = {
+  goals: {
+    $: { where: { id: 'goal-1' } }
+  }
+}
+```
+
+### Multiple Conditions (AND)
+```typescript
+const query = {
+  todos: {
+    $: { where: { completed: true, priority: 'high' } }
+  }
+}
+```
+
+## Associations (JOINs)
+
+### Fetch Related
+```typescript
+// Goals with todos
+const query = { goals: { todos: {} } }
+
+// Inverse: Todos with goals
+const query = { todos: { goals: {} } }
+```
+
+### Filter by Association
+```typescript
+// Dot notation for associated values
+const query = {
+  goals: {
+    $: { where: { 'todos.title': 'Go running' } },
+    todos: {}
+  }
+}
+```
+
+### Filter Associated Entities
+```typescript
+const query = {
+  goals: {
+    todos: {
+      $: { where: { completed: true } }
+    }
+  }
+}
+```
+
+## Operators
+
+### Logical
+```typescript
+// AND
+where: { and: [{ 'todos.priority': 'high' }, { 'todos.dueDate': { $lt: tomorrow } }] }
+
+// OR
+where: { or: [{ priority: 'high' }, { dueDate: { $lt: tomorrow } }] }
+```
+
+### Comparison (indexed fields only)
+- `$gt`, `$lt`, `$gte`, `$lte`
+```typescript
+where: { timeEstimate: { $gt: 2 } }
+```
+
+### Other Operators
+```typescript
+// IN
+where: { priority: { $in: ['high', 'critical'] } }
+
+// NOT
+where: { location: { $not: 'work' } }
+
+// NULL check
+where: { location: { $isNull: true } }
+
+// Pattern matching (indexed strings)
+where: { title: { $like: 'Get%' } }     // Case-sensitive
+where: { title: { $ilike: 'get%' } }    // Case-insensitive
+```
+
+Pattern syntax:
+- `'prefix%'` - Starts with
+- `'%suffix'` - Ends with
+- `'%substring%'` - Contains
+
+## Pagination & Ordering
+
+### Pagination (top-level only)
+```typescript
+$: { limit: 10, offset: 10 }
+```
+
+### Ordering (indexed fields)
+```typescript
+$: { order: { dueDate: 'asc' } }  // or 'desc'
+```
+
+## Field Selection
+```typescript
+// Select specific fields
+$: { fields: ['title', 'status'] }
+
+// With nested associations
+goals: {
+  $: { fields: ['title'] },
+  todos: { $: { fields: ['status'] } }
+}
+```
+
+## Deferred Queries
+```typescript
+const query = user ? { todos: { $: { where: { userId: user.id } } } } : null
+```
+
+## Complex Example
+```typescript
+const query = {
+  goals: {
+    $: {
+      where: { or: [{ status: 'active' }, { 'todos.priority': 'high' }] },
+      limit: 5,
+      order: { serverCreatedAt: 'desc' },
+      fields: ['title', 'description']
+    },
+    todos: {
+      $: {
+        where: { completed: false, dueDate: { $lt: nextWeek } },
+        fields: ['title', 'dueDate']
+      }
+    }
+  }
+}
+```
+
+## Best Practices
+1. Index fields for filtering/sorting/comparison
+2. Use field selection to minimize data transfer
+3. Defer queries when dependencies aren't ready
+4. Limit deep association nesting
+5. Use where/limit/pagination for large datasets
+
+## Common Errors
+- **"Field must be indexed"**: Add index in Explorer/schema
+- **"Invalid operator"**: Check syntax/spelling
+- **"Invalid query structure"**: Verify $ placement
+
+# How to do transactions
+
+## Core Concepts
+- **Transactions**: Atomic operation groups
+- **Transaction Chunks**: Individual operations
+- **Proxy Syntax**: `db.tx` object for creating chunks
+
+## Basic Structure
+```typescript
+db.transact(db.tx.NAMESPACE[ENTITY_ID].ACTION(DATA))
+```
+
+## Entity IDs
+
+### Generate with `id()`
+```typescript
+import { id } from '@instantdb/react'
+
+// New ID
+const newTodoId = id()
+db.transact(db.tx.todos[newTodoId].update({ text: "New todo" }))
+
+// Inline
+db.transact(db.tx.todos[id()].update({ text: "Another todo" }))
+```
+
+### Lookup by Unique Attributes
+```typescript
+import { lookup } from '@instantdb/react'
+// Schema must define unique attributes
+db.transact(
+  db.tx.profiles[lookup('handle', 'nezaj')].update({
+    bio: 'I like turtles'
+  })
+)
+```
+
+## Creating Entities
+
+Use `update` (not `create`):
+```typescript
+db.transact(db.tx.todos[id()].update({
+  text: "Complex todo",          // String
+  priority: 1,                   // Number
+  completed: false,              // Boolean
+  tags: ["work", "important"],   // Array
+  metadata: {                    // Object
+    assignee: "user-123",
+    dueDate: "2025-01-15"
+  }
+}))
+```
+
+## Updating Entities
+
+### Basic Update
+```typescript
+db.transact(db.tx.todos[todoId].update({ done: true }))
+```
+
+### Deep Merge (nested objects)
+```typescript
+// Preserves unspecified nested fields
+db.transact(db.tx.profiles[userId].merge({
+  preferences: { theme: "dark" }
+}))
+```
+
+### Remove Keys
+```typescript
+db.transact(db.tx.profiles[userId].merge({
+  preferences: { notifications: null }
+}))
+```
+
+## Deleting Entities
+```typescript
+// Single
+db.transact(db.tx.todos[todoId].delete())
+
+// Multiple
+db.transact([
+  db.tx.todos[todoId1].delete(),
+  db.tx.todos[todoId2].delete()
+])
+
+// Conditional
+const completedTodos = data.todos.filter(todo => todo.done)
+db.transact(completedTodos.map(todo => db.tx.todos[todo.id].delete()))
+```
+
+## Relationships
+
+### Link Entities
+```typescript
+// Single link
+db.transact(db.tx.projects[projectId].link({ todos: todoId }))
+
+// Multiple links
+db.transact(db.tx.projects[projectId].link({
+  todos: [todoId1, todoId2, todoId3]
+}))
+
+// Bidirectional (equivalent)
+db.transact(db.tx.projects[projectId].link({ todos: todoId }))
+db.transact(db.tx.todos[todoId].link({ projects: projectId }))
+```
+
+### Unlink
+```typescript
+db.transact(db.tx.projects[projectId].unlink({ todos: todoId }))
+```
+
+### Link with Lookup
+```typescript
+db.transact(
+  db.tx.profiles[lookup('email', 'user@example.com')].link({
+    projects: lookup('name', 'Project Alpha')
+  })
+)
+```
+
+## Advanced Operations
+
+### Combined Operations
+```typescript
+// Update + link
+db.transact(
+  db.tx.todos[id()]
+    .update({ text: "New todo", done: false })
+    .link({ projects: projectId })
+)
+
+// Multiple in transaction
+db.transact([
+  db.tx.todos[todoId].update({ done: true }),
+  db.tx.projects[projectId].update({ completedCount: 10 })
+])
+```
+
+### Special Namespaces
+```typescript
+// Link to authenticated user ($users is system namespace)
+db.transact(db.tx.todos[todoId].link({ $users: auth.userId }))
+```
+
+## Performance
+
+### Batch Large Operations
+```typescript
+const batchSize = 100
+const createManyTodos = async (count) => {
+  for (let i = 0; i < count; i += batchSize) {
+    const batch = []
+    for (let j = 0; j < batchSize && i + j < count; j++) {
+      batch.push(
+        db.tx.todos[id()].update({
+          text: `Todo ${i + j}`,
+          done: false
+        })
+      )
+    }
+    await db.transact(batch)
+  }
+}
+```
+
+## Common Patterns
+
+### Create-or-Update
+```typescript
+db.transact(
+  db.tx.profiles[lookup('email', 'user@example.com')].update({
+    lastLoginAt: Date.now()
+  })
+)
+```
+
+### Toggle Boolean
+```typescript
+const toggleTodo = (todo) => {
+  db.transact(db.tx.todos[todo.id].update({ done: !todo.done }))
+}
+```
+
+### Sequential Transactions
+```typescript
+const createProjectAndTasks = async (projectData) => {
+  const result = await db.transact(
+    db.tx.projects[id()].update(projectData)
+  )
+  const projectId = result.ids.projects[0]
+  await db.transact(
+    db.tx.tasks[id()].update({
+      title: "Initial planning"
+    }).link({ project: projectId })
+  )
+}
+```
+
+## Error Handling
+```typescript
+try {
+  await db.transact(/* ... */)
+} catch (error) {
+  console.error("Transaction failed:", error)
+}
+```
+
+## Important: Make sure to use `transact` inside a `useEffect` or event handler
+
+Do not use `transact` inside a component render. This will cause an error.
+
+```typescript
+// ❌ Wrong
+function MyComponent() {
+  // This will cause an error
+  db.transact(db.tx.todos[id()].update({ text: "New todo" }))
+  return <div>My component</div>
+}
+
+// ✅ Correct
+function MyComponent() {
+  const handleClick = () => {
+    db.transact(db.tx.todos[id()].update({ text: "New todo" }))
+  }
+  return <button onClick={handleClick}>Create todo</button>
+}
+```
